@@ -15,6 +15,7 @@ const SHELL = 'mx-auto w-full max-w-[1280px] px-6 sm:px-10'
    rail — depth is the one thing both have to agree on. */
 const STRATA: Stratum[] = [
   { id: 'surface', label: 'surface' },
+  { id: 'gap', label: 'the cost' },
   { id: 'problem', label: 'the problem' },
   { id: 'status', label: 'what runs today' },
   { id: 'how', label: 'how it works' },
@@ -102,6 +103,51 @@ function Layer({
           </div>
         </Reveal>
         <div className="mt-11">{children}</div>
+      </div>
+    </section>
+  )
+}
+
+/** Two dated markers and the distance between them. The page argues about
+ *  amnesia everywhere else in the abstract; this is the one place it costs
+ *  something. Symmetric, so the closing line is centred — the only centred
+ *  text on an otherwise strictly left-aligned page, and it earns it. */
+function TheGap() {
+  return (
+    <section id="gap" className="border-t border-white/[0.07]">
+      <div className={cn(SHELL, 'py-16 sm:py-24')}>
+        <Reveal>
+          <div className="flex items-center gap-4">
+            <span className="size-2 shrink-0 rounded-full bg-ochre" />
+            <span className="h-px flex-1 bg-gradient-to-r from-ochre/45 to-white/[0.08]" />
+            <span className="font-mono text-[11px] tracking-[0.16em] text-dim uppercase">
+              three days
+            </span>
+            <span className="h-px flex-1 bg-gradient-to-r from-white/[0.08] to-cinnabar/45" />
+            <span className="size-2 shrink-0 rounded-full bg-cinnabar" />
+          </div>
+
+          <div className="mt-5 flex items-start justify-between gap-10">
+            <div className="max-w-[26ch]">
+              <p className="font-mono text-[11px] tracking-[0.16em] text-ochre">2026-07-27</p>
+              <p className="mt-2 text-[14.5px] leading-[1.55] text-muted-foreground">
+                The decision gets made, and written down in a code review.
+              </p>
+            </div>
+            <div className="max-w-[26ch] text-right">
+              <p className="font-mono text-[11px] tracking-[0.16em] text-cinnabar">
+                2026-07-30
+              </p>
+              <p className="mt-2 text-[14.5px] leading-[1.55] text-muted-foreground">
+                The same bug is worked out again from scratch. It takes an evening.
+              </p>
+            </div>
+          </div>
+
+          <p className="mx-auto mt-14 max-w-[24ch] text-center text-[clamp(1.5rem,3vw,2.35rem)] leading-[1.18]">
+            The note existed. It was not in front of anyone.
+          </p>
+        </Reveal>
       </div>
     </section>
   )
@@ -260,8 +306,10 @@ export default function App() {
             </Reveal>
           </section>
 
+          <TheGap />
+
           {/* ----------------------------------------------------- problem */}
-          <Layer id="problem" depth="01" eyebrow="the problem" title="The mess was load-bearing">
+          <Layer id="problem" depth="02" eyebrow="the problem" title="The mess was load-bearing">
             <div className="grid gap-x-14 gap-y-5 text-[16.5px] leading-[1.72] text-muted-foreground xl:grid-cols-2">
               <Reveal>
                 <p className="max-w-[58ch]">
@@ -292,7 +340,7 @@ export default function App() {
           {/* ------------------------------------------------------ status */}
           <Layer
             id="status"
-            depth="02"
+            depth="03"
             eyebrow="status"
             title="What actually runs today"
             lede="Built in the open. Here is the line between what works and what is still intent."
@@ -331,7 +379,7 @@ export default function App() {
           </Layer>
 
           {/* --------------------------------------------------------- how */}
-          <Layer id="how" depth="03" eyebrow="how it works" title="Capture, anchor, surface">
+          <Layer id="how" depth="04" eyebrow="how it works" title="Capture, anchor, surface">
             <div className="grid gap-10 md:grid-cols-3 md:gap-14">
               {STEPS.map((s, i) => (
                 <Reveal key={s.t} delay={i * 0.08}>
@@ -364,7 +412,7 @@ export default function App() {
           {/* --------------------------------------------------- anchoring */}
           <Layer
             id="anchoring"
-            depth="04"
+            depth="05"
             eyebrow="the hard part"
             title="A record that loses its anchor is a diary entry"
             lede="A decision is about code, and code moves. Line 142 today is line 187 tomorrow, and in a different file next week. A tool that confidently points at the wrong line teaches you to distrust everything it says — so a record that cannot find its anchor says so."
@@ -377,7 +425,7 @@ export default function App() {
           {/* --------------------------------------------------- quickstart */}
           <Layer
             id="start"
-            depth="05"
+            depth="06"
             eyebrow="quickstart"
             title="Try it in five minutes"
             lede="Four steps. Records are hand-written for now."
@@ -450,13 +498,13 @@ why log                       # everything in the nearest store`}</Code>
           </Layer>
 
           {/* -------------------------------------------------------- scope */}
-          <Layer id="scope" depth="06" eyebrow="scope" title="What it isn’t">
+          <Layer id="scope" depth="07" eyebrow="scope" title="What it isn’t">
             <DefList items={NOTS} />
           </Layer>
 
           <Layer
             id="handling"
-            depth="07"
+            depth="08"
             eyebrow="commitments"
             title="What it does with your code"
             lede="This reads what an agent saw and did, which makes it sensitive by default."
@@ -473,7 +521,7 @@ why log                       # everything in the nearest store`}</Code>
                     <div>
                       <div className="flex items-center gap-4">
                         <span className="font-mono text-[11px] tracking-[0.18em] text-cinnabar">
-                          08
+                          09
                         </span>
                         <span className="font-mono text-[11px] tracking-[0.2em] text-cinnabar/70 uppercase">
                           falsification

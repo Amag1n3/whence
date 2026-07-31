@@ -4,9 +4,9 @@
     "date": "2026-07-27",
     "source": "code review, finding B5",
     "file": "src/auth/session.go",
-    "line_start": 1450,
-    "line_end": 1465,
+    "line_start": 142,
+    "line_end": 148,
     "decision": "Never write shared session keys from the checkout flow — namespace all three to CHECKOUT_*.",
-    "why": "\"userToken\", \"userId\" and \"role\" are all read by the staff dashboard on the same origin. Writing them here signs a staff user out mid-session, and the failure surfaces as {\"message\":\"API TIMEOUT\"} with HTTP 200 — which looks like a network problem and is not one. Cost an entire evening of re-derivation on 2026-07-30 because this note existed but was not in front of anyone."
+    "why": "\"userToken\", \"userId\" and \"role\" are all read by the staff dashboard on the same origin. Writing them here signs an operator out mid-session, and the failure surfaces as {\"message\":\"API TIMEOUT\"} with HTTP 200 — which looks like a network problem and is not one. Cost an evening of re-derivation on 2026-07-30 because this note existed but was not in front of anyone."
   }
 ]

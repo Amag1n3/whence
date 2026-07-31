@@ -20,24 +20,31 @@ type Stage = {
   tone: 'verdigris' | 'ochre' | 'cinnabar'
 }
 
-const HEAD: Line[] = [{ id: 'h1', text: 'const persist = (session) => {' }]
+/* Synthetic, matching the record the hero terminal shows. Same bug class as
+   the review it came from; invented service, because a public page is no
+   place for an employer's file paths. */
+const HEAD: Line[] = [{ id: 'h1', text: 'func persist(s Session) {' }]
 const TAIL: Line[] = [{ id: 't1', text: '}' }]
 
 const ANCHORED: Line[] = [
-  { id: 'a1', text: '  // CHECKOUT_* namespace — see .whence [b5]', anchored: true },
-  { id: 'a2', text: '  ls.setItem("CHECKOUT_userToken", session.token)', anchored: true },
-  { id: 'a3', text: '  ls.setItem("CHECKOUT_userId",    session.id)', anchored: true },
-  { id: 'a4', text: '  ls.setItem("CHECKOUT_role",      session.role)', anchored: true },
+  { id: 'a1', text: '\t// CHECKOUT_* namespace — see .whence [b5]', anchored: true },
+  { id: 'a2', text: '\tstore.Set("CHECKOUT_userToken", s.Token)', anchored: true },
+  { id: 'a3', text: '\tstore.Set("CHECKOUT_userID",    s.ID)', anchored: true },
+  { id: 'a4', text: '\tstore.Set("CHECKOUT_role",      s.Role)', anchored: true },
+]
+
+const INSERTED: Line[] = [
+  { id: 'n1', text: 'store := sessionStore(ctx)' },
+  { id: 'n2', text: '' },
 ]
 
 const STAGES: Stage[] = [
   {
     key: 'recorded',
     label: 'recorded',
-    caption:
-      'A decision is written down and pinned to lines 1451–1454. Everything agrees.',
+    caption: 'A decision is written down and pinned to lines 141–144. Everything agrees.',
     lines: [...HEAD, ...ANCHORED, ...TAIL],
-    start: 1450,
+    start: 140,
     confidence: 1,
     state: 'anchored · exact range',
     tone: 'verdigris',
@@ -47,14 +54,8 @@ const STAGES: Stage[] = [
     label: 'the code moves',
     caption:
       'Someone adds two lines above. Every line number in the record is now wrong — but the content still hashes the same, so the anchor follows it down.',
-    lines: [
-      { id: 'n1', text: 'const ls = window.localStorage' },
-      { id: 'n2', text: '' },
-      ...HEAD,
-      ...ANCHORED,
-      ...TAIL,
-    ],
-    start: 1450,
+    lines: [...INSERTED, ...HEAD, ...ANCHORED, ...TAIL],
+    start: 140,
     confidence: 0.91,
     state: 'anchored · content hash',
     tone: 'verdigris',
@@ -63,15 +64,14 @@ const STAGES: Stage[] = [
     key: 'rewritten',
     label: 'the code is rewritten',
     caption:
-      'The block is refactored away. Nothing hashes, no AST path matches. The record is surfaced as orphaned — loudly — instead of quietly pointing at whatever now sits on line 1453.',
+      'The block is refactored away. Nothing hashes, no AST path matches. The record is surfaced as orphaned — loudly — instead of quietly pointing at whatever now sits on line 143.',
     lines: [
-      { id: 'n1', text: 'const ls = window.localStorage' },
-      { id: 'n2', text: '' },
+      ...INSERTED,
       ...HEAD,
-      { id: 'r1', text: '  persistNamespaced(session)', anchored: true },
+      { id: 'r1', text: '\tpersistNamespaced(s)', anchored: true },
       ...TAIL,
     ],
-    start: 1450,
+    start: 140,
     confidence: 0.24,
     state: 'orphaned · needs a human',
     tone: 'cinnabar',

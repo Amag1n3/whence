@@ -2,23 +2,27 @@ import { useEffect, useRef, useState } from 'react'
 import { motion, useInView, useReducedMotion } from 'motion/react'
 import { cn } from '@/lib/utils'
 
-const CMD = 'why src/auth/session.go:1455'
+const CMD = 'why src/auth/session.go:142'
 
 type Out = { text: string; tone?: 'ochre' | 'dim' | 'plain' }
 
 /** Verbatim shape of print1() in main.go. If the CLI's output changes, this
- *  is a lie — which matters more than it looking good. */
+ *  is a lie — which matters more than it looking good.
+ *
+ *  The record itself is synthetic. It was drawn from a real code review, but
+ *  a public marketing page is no place for an employer's file paths and an
+ *  auth defect. Same bug class, same symptom, invented service. */
 const OUTPUT: Out[] = [
   { text: '' },
   { text: '  ● 2026-07-27 · code review, finding B5', tone: 'ochre' },
   { text: '    Never write shared session keys from the checkout flow —' },
   { text: '    namespace all three to CHECKOUT_*.' },
-  { text: '    "userToken", "userId" and "role" are all read by the admin', tone: 'dim' },
-  { text: '    dashboard on the same origin. Writing them here signs a', tone: 'dim' },
-  { text: '    staff user out mid-session, and it surfaces as HTTP 200', tone: 'dim' },
-  { text: '    with {"message":"API TIMEOUT"} — which looks like a network', tone: 'dim' },
+  { text: '    "userToken", "userId" and "role" are all read by the staff', tone: 'dim' },
+  { text: '    dashboard on the same origin. Writing them here signs an', tone: 'dim' },
+  { text: '    operator out mid-session, and it surfaces as HTTP 200 with', tone: 'dim' },
+  { text: '    {"message":"API TIMEOUT"} — which looks like a network', tone: 'dim' },
   { text: '    problem and is not one.', tone: 'dim' },
-  { text: '    session.go:1450-1465  [b5]', tone: 'dim' },
+  { text: '    src/auth/session.go:142-148  [b5]', tone: 'dim' },
 ]
 
 const TYPE_MS = 24
