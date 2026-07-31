@@ -100,6 +100,45 @@ func TestInspectFollowsDriftBeforeComparing(t *testing.T) {
 	}
 }
 
+// The miss that motivated the erosion check. A diff rewrites part of a recorded
+// block AND adds lines to it, so the degraded anchor's window — a fixed count of
+// significant lines — slides clear of the hunk that caused the damage. Line
+// overlap finds nothing; comparing integrity against the base revision finds it.
+func TestInspectReportsARecordThisDiffEroded(t *testing.T) {
+	// Recorded against lines 2-4 of block: the three Set calls. Here the third
+	// loses its namespace and a line is added under it, so two of three survive
+	// (0.67 — weak, not orphaned) and the best three-line window lands on 1-3,
+	// clear of the hunk at 4-5 that did the damage.
+	eroded := []string{
+		block[0],
+		block[1],
+		block[2],
+		"\tstore.Set(\"role\", s.Role)", // the namespace, dropped
+		"\tauditTrail(s)",               // and the block grows
+		block[4],
+	}
+	got := inspect([]Record{rec(block)}, map[string]bool{"b5": true},
+		"session.go", eroded, block, []lineSpan{{4, 5}})
+	if len(got) != 1 {
+		t.Fatalf("a diff that erodes a record must be reported, got %d findings", len(got))
+	}
+	if got[0].eroded <= got[0].anchor.Integrity {
+		t.Errorf("erosion means integrity fell: was %.2f, now %.2f",
+			got[0].eroded, got[0].anchor.Integrity)
+	}
+}
+
+// The other half: an untouched record in a file the diff happens to change must
+// not be reported. Erosion is a comparison, not a tripwire on any edit.
+func TestInspectStaysQuietWhenIntegrityHolds(t *testing.T) {
+	moved := append([]string{"store := sessionStore(ctx)", ""}, block...)
+	// The record drifted to 4-6 and is fully intact; the change is on line 1.
+	if got := inspect([]Record{rec(block)}, map[string]bool{"b5": true},
+		"session.go", moved, block, []lineSpan{{1, 1}}); len(got) != 0 {
+		t.Errorf("a record that merely moved is not eroded, got %d findings", len(got))
+	}
+}
+
 // The highest-value output: this change destroyed the link between a decision and
 // its code, which nobody reading the diff would notice.
 func TestInspectReportsAnAnchorThisDiffDestroyed(t *testing.T) {

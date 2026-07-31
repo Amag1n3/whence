@@ -29,7 +29,7 @@ const FINDINGS: Finding[] = [
     head: 'touches record [4f2a]',
     body: [
       'Namespace all three session keys to CHECKOUT_*.',
-      'src/auth/session.go:142-148 · anchored, exact range',
+      'src/auth/session.go:142-148 · intact, exact range',
     ],
   },
   {
