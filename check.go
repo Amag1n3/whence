@@ -47,7 +47,7 @@ func checkCmd(args []string) {
 	// could be.
 	root, err := git("rev-parse", "--show-toplevel")
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "why: not a git repository")
+		fmt.Fprintln(os.Stderr, "whence: not a git repository")
 		os.Exit(2)
 	}
 	root = strings.TrimSpace(root)
@@ -57,7 +57,7 @@ func checkCmd(args []string) {
 	// committed yet, which is when it is most useful.
 	diff, err := git("-C", root, "diff", "--unified=0", "--no-color", *base)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "why: cannot diff against %s (fetch it first?)\n", *base)
+		fmt.Fprintf(os.Stderr, "whence: cannot diff against %s (fetch it first?)\n", *base)
 		os.Exit(2)
 	}
 
@@ -124,6 +124,12 @@ type finding struct {
 	lost   bool // anchored in the base revision, anchors nowhere now
 	at     []lineSpan
 
+	// eroded is the record's integrity BEFORE this diff, set only when the change
+	// reduced it without destroying it outright. Zero means not eroded: integrity
+	// cannot fall to something lower than zero, so a real erosion always leaves a
+	// positive number here.
+	eroded float64
+
 	// Set when the thing that made this record TRUE is what the diff destroyed,
 	// rather than the code the record was about. The record itself can be
 	// perfectly anchored and still be left standing on nothing.
@@ -147,18 +153,37 @@ func inspect(rs []Record, prior map[string]bool, file string, now, was []string,
 			continue
 		}
 		a := resolveAnchor(now, r)
+		var before Anchor
+		if was != nil {
+			before = resolveAnchor(was, r)
+		}
 
 		if a.State == StateOrphaned {
 			// Only report an orphan this diff is responsible for. One that was
 			// already orphaned in the base revision is a real problem, but it is
 			// not this pull request's problem, and failing CI for it would train
 			// people to pass -no-verify.
-			if was != nil && resolveAnchor(was, r).State != StateOrphaned {
+			if was != nil && before.State != StateOrphaned {
 				out = append(out, finding{r: r, anchor: a, lost: true})
 			}
 			continue
 		}
 		if a.Start == 0 {
+			continue
+		}
+
+		// Eroded but not lost — and this has to be tested BEFORE the line overlap
+		// below, because the overlap misses exactly this case.
+		//
+		// Once a record degrades, its span is a best-match window of h significant
+		// lines: a fixed count, not the real region. Add lines inside the block and
+		// the window slides off the edit that caused the damage, so the change that
+		// hurt the record most is the one the overlap test cannot see. Comparing
+		// integrity across the base revision asks the question directly instead of
+		// inferring it from line numbers, which is the same mistake the anchor
+		// scoring used to make.
+		if was != nil && a.Integrity < before.Integrity {
+			out = append(out, finding{r: r, anchor: a, eroded: before.Integrity})
 			continue
 		}
 		var hits []lineSpan
@@ -217,6 +242,17 @@ func report(f finding) {
 		fmt.Printf("    %s\n", f.r.Decision)
 		fmt.Printf("    what made it true is gone, so the decision now rests on nothing.\n")
 		fmt.Printf("    point it at what makes it true now, or retract it.\n")
+		return
+	}
+	if f.eroded > 0 {
+		fmt.Printf("\n  ! %s — this change erodes record [%s] (%s)\n", f.r.File, f.r.ID, f.r.Date)
+		fmt.Printf("    %.0f%% of the recorded block survived before this diff, %.0f%% now\n",
+			f.eroded*100, f.anchor.Integrity*100)
+		fmt.Printf("    %s\n", f.r.Decision)
+		if f.r.Why != "" {
+			fmt.Printf("    why: %s\n", f.r.Why)
+		}
+		fmt.Printf("    %s · %s\n", locate(Resolved{Record: f.r, Anchor: f.anchor}), f.anchor.State)
 		return
 	}
 	if f.lost {

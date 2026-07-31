@@ -33,25 +33,34 @@ type AnchorState string
 // would only be somewhere for them to drift apart.
 const (
 	StateLineOnly AnchorState = "line range only, unverified"
-	StateExact    AnchorState = "anchored, exact range"
-	StateDrifted  AnchorState = "anchored, content hash"
-	StateWeak     AnchorState = "weak — content changed"
+	StateExact    AnchorState = "intact, exact range"
+	StateDrifted  AnchorState = "intact, moved"
+	StateWeak     AnchorState = "altered"
 	StateOrphaned AnchorState = "ORPHANED — anchor lost, needs a human"
 )
 
-// Confidence is driven by content, not by distance. A block that moved 400
-// lines but still hashes identically is not less certainly the same block —
-// so drift costs a small fixed amount for the surrounding context having
-// changed, and nothing more.
+// Content and position are separate readings. Collapsing them into one number
+// is what this file used to get wrong.
 //
-// Both numbers are picked by eye, not measured. They are the knobs to
-// calibrate once real repos produce real orphans; weakFloor especially, since
-// it is the line between "the code changed but this is recognisably the same
-// block" and "a different block that happens to share a few lines".
+// A block can be byte-identical and 400 lines away, or sitting exactly where it
+// was recorded and half rewritten. Those are opposite situations and one score
+// cannot say which is which — so position is reported as positions (see locate)
+// and the number reports content alone.
+//
+// What was here before charged a flat 0.90 for having moved. That figure
+// measured nothing: it was a constant, so it did not track distance, and it
+// triggered on any insertion anywhere above the block, which says nothing about
+// the block. Every record in a file people work in converged on it within days,
+// and a reading they all share cannot tell any of them apart.
 const (
-	driftedConfidence = 0.90
-	weakCeiling       = 0.85
-	weakFloor         = 0.60
+	// weakFloor is how much of a recorded block has to survive before this is
+	// still recognisably that block rather than a lookalike sharing a few lines.
+	//
+	// Picked by eye, not measured — the knob to calibrate once real repos
+	// produce real orphans. There is deliberately no ceiling to go with it: a
+	// cap would throw away the ratio the scan just finished computing, which is
+	// the one number in this file that is actually a measurement.
+	weakFloor = 0.60
 
 	// rareAt is how many times a line may appear in a file and still count as
 	// identifying a place in it. `store.Set("CHECKOUT_role", s.Role)` appears
@@ -69,9 +78,20 @@ type Anchor struct {
 	// its recorded one. Both are zero when the anchor is lost: an orphan has
 	// no line to point at, and inventing one is the exact failure this whole
 	// file exists to prevent.
+	//
+	// These two carry the position reading. How far a record travelled is
+	// Start minus the record's own Start, and locate() shows both numbers
+	// rather than the difference, because "now at 187, recorded at 142" is
+	// read faster than "moved 45".
 	Start, End int
 
-	Confidence float64
+	// Integrity is how much of the recorded content survives at Start..End,
+	// weighted so a rare line counts for more than a common one. 1.0 means
+	// every recorded line is still there.
+	//
+	// Set rather than computed for exact and drifted: both are proven
+	// byte-identical matches, so there is nothing left to measure.
+	Integrity float64
 }
 
 // hline is one significant line of a file: its hash, and the 1-based line
@@ -175,7 +195,7 @@ func resolveAnchor(lines []string, r Record) Anchor {
 	// Still exactly where it says it is: the common case, and the cheap one.
 	if r.Start >= 1 && r.Start <= r.End && r.End <= len(lines) {
 		if sameSeq(hashSpan(lines[r.Start-1:r.End]), r.Lines) {
-			return Anchor{State: StateExact, Start: r.Start, End: r.End, Confidence: 1}
+			return Anchor{State: StateExact, Start: r.Start, End: r.End, Integrity: 1}
 		}
 	}
 
@@ -218,8 +238,13 @@ func resolveAnchor(lines []string, r Record) Anchor {
 		}
 	}
 	if best >= 0 {
+		// Integrity 1, not a discount for having moved. sameWindow demands the
+		// whole recorded hash sequence, in order, so reaching here proves the
+		// content is byte-identical — it is only somewhere else. Charging that
+		// would contradict the reason content drives the score in the first
+		// place.
 		return Anchor{State: StateDrifted, Start: sig[best].n, End: sig[best+h-1].n,
-			Confidence: driftedConfidence}
+			Integrity: 1}
 	}
 
 	// Nothing matches outright. Find whatever survived best, and be honest
@@ -236,16 +261,21 @@ func resolveAnchor(lines []string, r Record) Anchor {
 		}
 	}
 	if bestSim >= weakFloor {
-		// Capped: the sequence check above already failed, so this window
-		// holds the same lines in a different order or with substitutions.
-		// That is not the same block, whatever the ratio says.
-		if bestSim > weakCeiling {
-			bestSim = weakCeiling
-		}
+		// Reported as measured. A cap used to sit here, flattening every
+		// altered block to 0.85 — so one argument added to one line of a forty
+		// line span read exactly like a block half rewritten, which is the
+		// distinction the number exists to make.
+		//
+		// The cap was guarding a real case the wrong way. Reaching here means
+		// the recorded sequence is nowhere in the file, so a span whose lines
+		// all survive in a different order scores 1.0. State and integrity are
+		// answering different questions — "is the sequence intact" and "is the
+		// content still there" — and a reader given both can tell a resequenced
+		// block from an eroded one. Given only a capped number, they cannot.
 		return Anchor{State: StateWeak, Start: sig[bestAt].n, End: sig[bestAt+h-1].n,
-			Confidence: bestSim}
+			Integrity: bestSim}
 	}
-	return Anchor{State: StateOrphaned, Confidence: bestSim}
+	return Anchor{State: StateOrphaned, Integrity: bestSim}
 }
 
 // overlap is how much of the recorded block survives in this window, weighted

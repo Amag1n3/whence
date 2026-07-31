@@ -15,7 +15,7 @@ type Stage = {
   caption: string
   lines: Line[]
   start: number
-  confidence: number
+  integrity: number
   state: string
   tone: 'verdigris' | 'ochre' | 'cinnabar'
 }
@@ -45,8 +45,8 @@ const STAGES: Stage[] = [
     caption: 'A decision is written down and pinned to lines 141–144. Everything agrees.',
     lines: [...HEAD, ...ANCHORED, ...TAIL],
     start: 140,
-    confidence: 1,
-    state: 'anchored, exact range',
+    integrity: 1,
+    state: 'intact, exact range',
     tone: 'verdigris',
   },
   {
@@ -56,8 +56,8 @@ const STAGES: Stage[] = [
       'Someone adds two lines above. Every line number in the record is now wrong — but the content still hashes the same, so the anchor follows it down.',
     lines: [...INSERTED, ...HEAD, ...ANCHORED, ...TAIL],
     start: 140,
-    confidence: 0.9,
-    state: 'anchored, content hash',
+    integrity: 1,
+    state: 'intact, moved',
     tone: 'verdigris',
   },
   {
@@ -75,8 +75,8 @@ const STAGES: Stage[] = [
       ...TAIL,
     ],
     start: 140,
-    confidence: 0.75,
-    state: 'weak — content changed',
+    integrity: 0.75,
+    state: 'altered',
     tone: 'ochre',
   },
   {
@@ -91,7 +91,7 @@ const STAGES: Stage[] = [
       ...TAIL,
     ],
     start: 140,
-    confidence: 0,
+    integrity: 0,
     state: 'ORPHANED — needs a human',
     tone: 'cinnabar',
   },
@@ -182,18 +182,18 @@ export function DriftDemo() {
           <div className="flex items-baseline justify-between">
             <span className="font-mono text-[11px] text-silt/35">record [b5]</span>
             <span className={cn('font-mono text-[15px] tabular-nums', toneText)}>
-              {stage.confidence.toFixed(2)}
+              {`${Math.round(stage.integrity * 100)}%`}
             </span>
           </div>
           <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
             <motion.div
               className={cn('h-full rounded-full', toneBg)}
-              animate={{ width: `${stage.confidence * 100}%` }}
+              animate={{ width: `${stage.integrity * 100}%` }}
               transition={{ duration: 0.7, ease: [0.16, 0.8, 0.28, 1] }}
             />
           </div>
           <p className="mt-1.5 font-mono text-[10.5px] tracking-wide text-silt/30">
-            confidence
+            intact
           </p>
         </div>
 

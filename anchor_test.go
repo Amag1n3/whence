@@ -36,8 +36,8 @@ func TestAnchorExact(t *testing.T) {
 	if a.Start != 2 || a.End != 4 {
 		t.Errorf("span should be unchanged, got %d-%d", a.Start, a.End)
 	}
-	if a.Confidence != 1 {
-		t.Errorf("confidence should be 1 on an exact match, got %.2f", a.Confidence)
+	if a.Integrity != 1 {
+		t.Errorf("an exact match is fully intact, got %.2f", a.Integrity)
 	}
 }
 
@@ -53,7 +53,7 @@ func TestAnchorSurvivesReindentAndBlankLines(t *testing.T) {
 		block[4],
 	}
 	if a := resolveAnchor(got, rec(block)); a.State != StateExact && a.State != StateDrifted {
-		t.Errorf("reformatting must not lose the anchor, got %q at %.2f", a.State, a.Confidence)
+		t.Errorf("reformatting must not lose the anchor, got %q at %.2f", a.State, a.Integrity)
 	}
 }
 
@@ -68,8 +68,10 @@ func TestAnchorFollowsDrift(t *testing.T) {
 	if a.Start != 4 || a.End != 6 {
 		t.Errorf("anchor should have followed to 4-6, got %d-%d", a.Start, a.End)
 	}
-	if a.Confidence != driftedConfidence {
-		t.Errorf("confidence = %.2f, want %.2f", a.Confidence, driftedConfidence)
+	// Byte-identical content that merely moved. Charging it would contradict
+	// the reason content drives the score at all.
+	if a.Integrity != 1 {
+		t.Errorf("a clean move is fully intact, got %.2f", a.Integrity)
 	}
 }
 
@@ -95,13 +97,48 @@ func TestAnchorDecaysWhenContentChanges(t *testing.T) {
 	}
 	a := resolveAnchor(weakened, rec(block))
 	if a.State != StateWeak {
-		t.Fatalf("a partly rewritten block should be weak, got %q at %.2f", a.State, a.Confidence)
+		t.Fatalf("a partly rewritten block should be weak, got %q at %.2f", a.State, a.Integrity)
 	}
-	if a.Confidence >= driftedConfidence {
-		t.Errorf("weak must score below a clean drift, got %.2f", a.Confidence)
+	if a.Integrity >= 1 {
+		t.Errorf("a rewritten line must cost integrity, got %.2f", a.Integrity)
 	}
-	if a.Confidence < weakFloor {
-		t.Errorf("2 of 3 lines surviving should clear the floor, got %.2f", a.Confidence)
+	if a.Integrity < weakFloor {
+		t.Errorf("2 of 3 lines surviving should clear the floor, got %.2f", a.Integrity)
+	}
+}
+
+// The case that exposed the cap. A forty-line span picks up one extra argument
+// on one line — the other thirty-nine are untouched — and the old code clamped
+// the score to a ceiling, so it read identically to a block half rewritten.
+// That is the distinction the number exists to make, so there is no ceiling now
+// and this test is what fails if one comes back.
+func TestAnchorScoresASmallEditFarAboveARewrite(t *testing.T) {
+	var file []string
+	for i := 0; i < 40; i++ {
+		file = append(file, "step"+strconv.Itoa(i)+" := compute"+strconv.Itoa(i)+"(ctx)")
+	}
+	r := Record{ID: "wide", File: "a.go", Start: 1, End: 40, Lines: hashSpan(file)}
+
+	// One line gains an argument. Thirty-nine of forty survive untouched.
+	nudged := append([]string{}, file...)
+	nudged[17] = "step17 := compute17(ctx, authorHuman)"
+	small := resolveAnchor(nudged, r)
+	if small.State != StateWeak {
+		t.Fatalf("an edited line breaks the sequence, so this is altered: got %q", small.State)
+	}
+	if small.Integrity < 0.90 {
+		t.Errorf("39 of 40 lines intact should score high, got %.2f", small.Integrity)
+	}
+
+	// Half the block rewritten, for contrast.
+	gutted := append([]string{}, file...)
+	for i := 0; i < 20; i++ {
+		gutted[i] = "replaced" + strconv.Itoa(i) + " := somethingElse(ctx)"
+	}
+	big := resolveAnchor(gutted, r)
+	if big.Integrity >= small.Integrity {
+		t.Errorf("half a block gone (%.2f) must score below one edited line (%.2f)",
+			big.Integrity, small.Integrity)
 	}
 }
 
@@ -111,7 +148,7 @@ func TestAnchorOrphansRatherThanGuess(t *testing.T) {
 	gone := []string{block[0], "	persistNamespaced(s)", block[4]}
 	a := resolveAnchor(gone, rec(block))
 	if a.State != StateOrphaned {
-		t.Fatalf("a rewritten block should orphan, got %q at %.2f", a.State, a.Confidence)
+		t.Fatalf("a rewritten block should orphan, got %q at %.2f", a.State, a.Integrity)
 	}
 	if a.Start != 0 || a.End != 0 {
 		t.Errorf("an orphan must claim no line, got %d-%d", a.Start, a.End)
@@ -146,8 +183,8 @@ func TestAnchorRefusesToChaseABoilerplateSpan(t *testing.T) {
 		t.Fatalf("claimed a confident move to %d-%d on lines that appear all over the file",
 			a.Start, a.End)
 	}
-	if a.Confidence >= weakFloor {
-		t.Errorf("boilerplate must not earn confidence, got %q at %.2f", a.State, a.Confidence)
+	if a.Integrity >= weakFloor {
+		t.Errorf("boilerplate must not earn integrity, got %q at %.2f", a.State, a.Integrity)
 	}
 }
 
@@ -171,7 +208,7 @@ func TestAnchorDoesNotSurviveOnScaffoldingAlone(t *testing.T) {
 	a := resolveAnchor(file, r)
 	if a.State != StateOrphaned {
 		t.Errorf("only the brace survives, so this should orphan, got %q at %.2f",
-			a.State, a.Confidence)
+			a.State, a.Integrity)
 	}
 }
 

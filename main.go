@@ -54,6 +54,8 @@ func main() {
 		rmCmd(os.Args[2:])
 	case "confirm":
 		confirmCmd(os.Args[2:])
+	case "reground":
+		regroundCmd(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -74,6 +76,9 @@ func usage() {
   whence backfill [dir]     harvest ponytail: comments already in the code
   whence rm <id> [-w why]   retract one record, logging why it was wrong
   whence confirm <id>       record that a human has checked an agent-written record
+  whence reground <id> -e <ref> [-e ...]
+                            re-point a record's evidence. Not a retraction: the
+                            claim stands, only what backs it up has moved.
   whence check [-base rev]  report the records covering a diff; exit 1 if any
   whence hook pre           (called by Claude Code; reads a hook payload on stdin)
 
@@ -171,7 +176,7 @@ func renderContext(rs []Resolved) string {
 	b.WriteString(contextPreamble)
 	for i, r := range rs {
 		line := fmt.Sprintf("- [%s] %s — %s\n  why: %s\n  anchor: %s%s\n  source: %s\n",
-			r.Date, locate(r), r.Decision, r.Why, r.Anchor.State, confidence(r), r.Source)
+			r.Date, locate(r), r.Decision, r.Why, r.Anchor.State, integrity(r), r.Source)
 		for _, g := range r.Grounds {
 			line += fmt.Sprintf("  evidence: %s\n", ground(g))
 		}
@@ -202,14 +207,24 @@ func locate(r Resolved) string {
 	}
 }
 
-// confidence renders the score, or nothing at all for a record that has no
-// anchor to score. A hand-written record showing "confidence 0.00" would read
-// as a failed anchor rather than an absent one.
-func confidence(r Resolved) string {
-	if r.Anchor.State == StateLineOnly {
-		return ""
+// integrity renders how much of the recorded content survives, and nothing at
+// all wherever that figure is not a measurement.
+//
+// exact and drifted are both proven byte-identical matches, so their integrity
+// is 1.0 by construction — printing it would dress a constant as a reading, and
+// a number every healthy record shares is a number nobody reads. A record with
+// no hashes has nothing to measure at all; "0%" there would say the anchor
+// failed rather than that it was never taken.
+//
+// So it shows up in exactly two places: a block that partly survived, and one
+// that did not survive. Both are cases where the reader has a decision to make
+// and the number is what informs it.
+func integrity(r Resolved) string {
+	switch r.Anchor.State {
+	case StateWeak, StateOrphaned:
+		return fmt.Sprintf(" · %.0f%% intact", r.Anchor.Integrity*100)
 	}
-	return fmt.Sprintf(" · confidence %.2f", r.Anchor.Confidence)
+	return ""
 }
 
 // trust renders how much human attention a record has had, and nothing at all
@@ -241,9 +256,12 @@ func ground(g Grounded) string {
 	if g.Anchor.State == StateExact {
 		return fmt.Sprintf("%s · %s", g.Ref, g.Anchor.State)
 	}
-	// It moved or changed, so the ref as written is now misleading.
-	return fmt.Sprintf("%s · %s",
-		locate(Resolved{Record: g.asRecord(), Anchor: g.Anchor}), g.Anchor.State)
+	// It moved or changed, so the ref as written is now misleading. The number
+	// matters most here: "altered" alone cannot tell a pointer that lost one
+	// argument from one whose code was rewritten around it, and the first needs
+	// no action while the second needs `whence reground`.
+	res := Resolved{Record: g.asRecord(), Anchor: g.Anchor}
+	return fmt.Sprintf("%s · %s%s", locate(res), g.Anchor.State, integrity(res))
 }
 
 // appendSurfaced logs that records were put in front of an agent. It writes
@@ -279,7 +297,7 @@ func query(target string) {
 	file, line := splitTarget(target)
 	abs, err := filepath.Abs(file)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "why:", err)
+		fmt.Fprintln(os.Stderr, "whence:", err)
 		os.Exit(1)
 	}
 	store, root, ok := FindStore(abs)
@@ -289,7 +307,7 @@ func query(target string) {
 	}
 	rs, err := Load(store)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "why:", err)
+		fmt.Fprintln(os.Stderr, "whence:", err)
 		os.Exit(1)
 	}
 	hits := Match(root, rs, Rel(root, abs), line)
@@ -305,7 +323,7 @@ func query(target string) {
 func logAll() {
 	cwd, err := os.Getwd()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "why:", err)
+		fmt.Fprintln(os.Stderr, "whence:", err)
 		os.Exit(1)
 	}
 	// Walk up from a sentinel inside cwd so FindStore checks cwd itself too.
@@ -316,7 +334,7 @@ func logAll() {
 	}
 	rs, err := Load(store)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "why:", err)
+		fmt.Fprintln(os.Stderr, "whence:", err)
 		os.Exit(1)
 	}
 	if len(rs) == 0 {
@@ -356,7 +374,7 @@ func logAll() {
 }
 
 func print1(r Resolved) {
-	fmt.Printf("\n  ● %s · %s%s%s\n", r.Date, r.Source, confidence(r), trust(r.Record))
+	fmt.Printf("\n  ● %s · %s%s%s\n", r.Date, r.Source, integrity(r), trust(r.Record))
 	fmt.Printf("    %s\n", r.Decision)
 	if r.Why != "" { // backfilled one-sentence notes have no separate why
 		for _, l := range strings.Split(r.Why, "\n") {

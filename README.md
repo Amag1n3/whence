@@ -11,9 +11,10 @@
 > anchoring with drifted / weak / orphaned states, evidence pointers that anchor
 > and rot independently of the record, `whence check` as a CI gate, human-vs-agent
 > authorship with a confirmation step, a committed retraction log, `whence add`,
-> `whence rm`, `whence confirm`, and `whence backfill` — which harvests decisions already
-> written down as `ponytail:` comments, so a store is non-empty without anyone
-> retyping anything.
+> `whence rm`, `whence confirm`, `whence reground`, and `whence backfill` — which harvests decisions already
+> written down as `HACK:` / `WORKAROUND:` / `ponytail:` comments, and as
+> `NOTE:` / `TODO:` notes that give a reason — so a store is non-empty without
+> anyone retyping anything.
 >
 > **Capture is not built.** Records are authored deliberately, because signal
 > extraction is the hard problem and curated records are the spec for solving it.
@@ -51,13 +52,13 @@ about, and puts it back in front of the next agent before it edits.
 ```console
 $ whence src/auth/session.go:142
 
-  ● 2026-07-27 · code review, finding B5 · confidence 0.90
+  ● 2026-07-27 · code review, finding B5
     Never write shared session keys from this flow — namespace all three.
     "userToken", "userId" and "role" are all read by the admin
     dashboard — same origin, same app. Writing them here signs a
     staff user out mid-session and surfaces as a 200 with an
     error body, which is why it looks like a timeout.
-    src/auth/session.go:147-153 (recorded at 142-148) · anchored, content hash  [4f2a]
+    src/auth/session.go:147-153 (recorded at 142-148) · intact, moved  [4f2a]
 ```
 
 That record was written about line 142 and answers for line 147, because the
@@ -66,7 +67,7 @@ code moved and the anchor followed it. When it stops following, it says so:
 ```console
 $ whence src/auth/session.go
 
-  ● 2026-07-27 · code review, finding B5 · confidence 0.00
+  ● 2026-07-27 · code review, finding B5 · 0% intact
     Never write shared session keys from this flow — namespace all three.
     src/auth/session.go:142-148 (recorded; anchor lost) · ORPHANED — anchor lost, needs a human  [4f2a]
 ```
@@ -80,14 +81,19 @@ $ whence check --base origin/main
   ! src/auth/session.go:145 — touches record [4f2a] (2026-07-27)
     Never write shared session keys from this flow — namespace all three.
     why: "userToken", "userId" and "role" are all read by the admin dashboard.
-    src/auth/session.go:142-148 · anchored, exact range
+    src/auth/session.go:142-148 · intact, exact range
+
+  ! src/auth/session.go — this change erodes record [7d31] (2026-06-02)
+    100% of the recorded block survived before this diff, 64% now
+    Retry with backoff here; the provider rate-limits per-account, not per-key.
+    src/auth/session.go:88-94 · altered
 
   ✗ src/auth/session.go — record [9c1b] lost its anchor in this change
     it anchored at 88-94 before this diff; nothing matches now
     the decision is still on record; the code it described is gone.
     re-anchor it with `whence add`, or delete it deliberately.
 
-  2 record(s) to confirm. exit 1
+  3 record(s) to confirm. exit 1
 ```
 
 That exit code is the product. Everything else is plumbing that leads to it.
@@ -95,9 +101,10 @@ That exit code is the product. Everything else is plumbing that leads to it.
 **`check` reports coverage, never verdicts.** It says *these lines are governed by
 these decisions, go and confirm* — it does not decide that your change is wrong.
 Judging a diff is code review, that category is well served, and a tool that
-starts doing it has lost the thing that makes it different. The second finding
-above is the one no reviewer would catch unaided: the change didn't contradict
-anything, it severed a decision from the code it described.
+starts doing it has lost the thing that makes it different. The last two findings
+are the ones no reviewer would catch unaided: neither change contradicted
+anything, they wore away and then severed the link between a decision and the
+code it described.
 
 A record introduced by the same diff is not reported. Otherwise every pull
 request that records a decision fails its own gate, which is how a team learns to
@@ -181,9 +188,25 @@ A store with no records is a tool that does nothing, so start by harvesting what
 is already written down:
 
 ```console
-$ whence backfill              # every `ponytail:` comment under the current directory
+$ whence backfill              # decision comments under the current directory
 $ whence log                   # what you now have
 ```
+
+Backfill recognises two classes of comment, because the markers people actually
+write split cleanly in two:
+
+| Marker | Harvested |
+|---|---|
+| `HACK:` `WORKAROUND:` `XXX:` `GOTCHA:` `ponytail:` | **Always.** The word is itself the admission that a choice was made against a constraint. |
+| `NOTE:` `TODO:` `TODO(owner):` `FIXME:` `WARNING:` `CAVEAT:` | **Only when the note gives a reason** — *because*, *so that*, *since*, *otherwise*, *to avoid*, *rather than*. |
+
+That second rule is the whole difference between a store worth reading and one
+full of `TODO: fix this`. A decision says why; a task only says what. The reason
+may appear anywhere in the comment block, not just the first line.
+
+The word list is deliberately narrow, so a reason phrased around it is missed. A
+missed note you can add by hand; a garbage record in a committed, shared store
+you cannot take back.
 
 Then add them as you go, at the moment you make the call:
 
@@ -238,11 +261,16 @@ entry. A record that keeps it is a control.**
 
 So anchoring is hybrid: line ranges *plus* a hash per significant line of the
 recorded span. Reformatting and reindentation change nothing. Code inserted above
-moves the record and costs it a little confidence. Rewriting the block itself is
-what makes confidence fall — content drives the score, not distance, because a
-block that moved 400 lines and still hashes identically is not less certainly the
-same block. When enough of it is gone, the record is surfaced as **orphaned** and
-claims no line number at all, rather than being silently pointed at the wrong one.
+moves the record and costs it nothing — a block that travelled 400 lines and
+still hashes identically is not less certainly the same block. Only rewriting the
+block itself costs anything.
+
+**Position and content are reported separately, never as one number.** Where a
+record points is shown as line numbers; how much of it survives is shown as a
+percentage, and only where that percentage was actually measured. A record that
+is intact says so, whether it moved or not. When enough of it is gone, the record
+is surfaced as **orphaned** and claims no line number at all, rather than being
+silently pointed at the wrong one.
 
 ### Evidence: what someone else could check
 
@@ -305,7 +333,7 @@ is zero. So agent-authored records are marked, and stay marked until somebody
 confirms them — including in the block injected into the next agent's context:
 
 ```
-  anchor: anchored, exact range · confidence 1.00
+  anchor: intact, exact range
   source: capture
   UNCHECKED — an agent wrote this and no human has confirmed it
 ```
@@ -341,7 +369,7 @@ sees that failure.
 | Phase | Scope |
 |---|---|
 | **0** | ✅ Claude Code `PreToolUse` hook → records → `whence <file>:<line>` and `whence log`. |
-| **1** | ✅ Content-hash anchoring, confidence decay, orphan surfacing, evidence pointers, `whence add`, `whence rm`, and backfill from `ponytail:` comments. Still open: backfill from git history and ADR/review docs, AST paths, capture, record signing. |
+| **1** | ✅ Content-hash anchoring, confidence decay, orphan surfacing, evidence pointers, `whence add`, `whence rm`, and backfill from decision comments. Still open: backfill from git history and ADR/review docs, AST paths, capture, record signing. |
 | **2** | ✅ `whence check` as a CI gate, comparing a diff against records. |
 | **3** | End-to-end encrypted team sync + dashboard: AI-authorship attribution, per-commit cost, violation history. |
 

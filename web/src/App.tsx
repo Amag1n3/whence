@@ -198,7 +198,7 @@ const LEDGER = [
   {
     on: true,
     t: 'whence backfill',
-    d: 'Harvests decisions already written in your code as ponytail: comments, so day one is not an empty store.',
+    d: 'Harvests decisions already written in your code — HACK:, WORKAROUND:, and NOTE:/TODO: notes that give a reason. Day one is not an empty store.',
   },
   {
     on: false,
@@ -216,7 +216,7 @@ const STEPS = [
   {
     t: 'Anchor',
     tag: 'works',
-    d: 'Hash every significant line of the span. Reindent and reformat freely — nothing moves. Insert above it and the record follows down. Rewrite it and confidence falls until the record calls itself orphaned and claims no line at all.',
+    d: 'Hash every significant line of the span. Reindent and reformat freely — nothing moves. Insert above it and the record follows down, at no cost — a block that moved is not a block that changed. Only rewriting it costs anything, and it falls until the record calls itself orphaned and claims no line at all.',
   },
   {
     t: 'Surface',

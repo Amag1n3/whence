@@ -133,6 +133,56 @@ func TestHarvestIgnoresTheMarkerOutsideAComment(t *testing.T) {
 	}
 }
 
+// The marker set, and the line it draws. `HACK:` and friends are admissions on
+// their own; `NOTE:` and `TODO:` are mostly descriptive and only count when the
+// note says why — which is what separates a decision from a task.
+func TestHarvestMarkerSet(t *testing.T) {
+	cases := []struct {
+		name    string
+		lines   []string
+		want    bool
+		wantSrc string
+	}{
+		{"hack needs no reason", []string{
+			"// HACK: single global lock here.", "func f() {}"}, true, "HACK comment"},
+		{"workaround needs no reason", []string{
+			"// WORKAROUND: pin to v1.2.", "func f() {}"}, true, "WORKAROUND comment"},
+		{"note with a reason is a decision", []string{
+			"// NOTE: retry five times because the upstream 502s under load.",
+			"func f() {}"}, true, "NOTE comment"},
+		{"note without a reason is not", []string{
+			"// NOTE: see the design doc.", "func f() {}"}, false, ""},
+		{"bare todo is a task, not a decision", []string{
+			"// TODO: fix this properly.", "func f() {}"}, false, ""},
+		{"todo with an owner and a reason", []string{
+			"// TODO(amogh): drop the shim since v2 ships in March.",
+			"func f() {}"}, true, "TODO comment"},
+		{"the reason may be on a continuation line", []string{
+			"// NOTE: three retries, not one.",
+			"// A single attempt fails the batch because the upstream 502s under load.",
+			"func f() {}"}, true, "NOTE comment"},
+		{"an ordinary comment is left alone", []string{
+			"// transfer moves money between accounts.", "func f() {}"}, false, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := harvest(c.lines)
+			if c.want && len(got) != 1 {
+				t.Fatalf("want it harvested, got %d", len(got))
+			}
+			if !c.want {
+				if len(got) != 0 {
+					t.Fatalf("want it skipped, harvested %q", got[0].text)
+				}
+				return
+			}
+			if got[0].src != c.wantSrc {
+				t.Errorf("source = %q, want %q", got[0].src, c.wantSrc)
+			}
+		})
+	}
+}
+
 // Re-running backfill must not duplicate. It is the kind of command someone
 // runs twice because they are not sure whether the first one worked.
 func TestBackfillIsIdempotent(t *testing.T) {
@@ -149,7 +199,7 @@ func TestBackfillIsIdempotent(t *testing.T) {
 	if len(first) != 1 {
 		t.Fatalf("should have harvested 1 note, got %d", len(first))
 	}
-	if first[0].Source != backfillSource {
+	if first[0].Source != "ponytail comment" {
 		t.Errorf("source should mark where it came from, got %q", first[0].Source)
 	}
 
@@ -231,6 +281,67 @@ func TestEvidencePointingAtCodeGetsItsOwnAnchor(t *testing.T) {
 	// And the record's own anchor is unaffected — the two rot independently.
 	if a := resolveAnchor(fileLines(filepath.Join(dir, "session.go")), rs[0]); a.State != StateExact {
 		t.Errorf("the record's own anchor should be untouched, got %q", a.State)
+	}
+}
+
+// Re-pointing rotted evidence must not go through rm, because rm writes to the
+// retraction log — the one number that measures how often this store is wrong.
+// Fixing a stale pointer is bookkeeping, and bookkeeping in that log destroys it.
+func TestRegroundRepointsEvidenceWithoutRetracting(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	writeFile(t, dir, "session.go", block)
+	writeFile(t, dir, "dashboard.go", []string{
+		"func render(u User) {",
+		"\tread(\"CHECKOUT_userToken\")",
+		"}",
+	})
+
+	if _, _, err := add("session.go", 2, 4, "namespace session keys",
+		"the dashboard reads them", "code review", authorHuman,
+		[]string{"dashboard.go:2"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The cited line moves into a new helper. The grounds are still real, they
+	// are just somewhere else now — exactly the case that must not read as a
+	// record having been wrong.
+	writeFile(t, dir, "dashboard.go", []string{
+		"func render(u User) {",
+		"\treadKeys(u)",
+		"}",
+		"func readKeys(u User) {",
+		"\tread(\"CHECKOUT_userToken\")",
+		"}",
+	})
+
+	rs, err := Load(filepath.Join(dir, storeDirName, recordsFileName))
+	if err != nil || len(rs) != 1 {
+		t.Fatalf("expected one record, got %d (%v)", len(rs), err)
+	}
+	id := rs[0].ID
+
+	got, _, err := reground(id, []string{"dashboard.go:5"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Grounds) != 1 || got.Grounds[0].Anchor.State != StateExact {
+		t.Fatalf("re-pointed grounds should anchor exactly, got %+v", got.Grounds)
+	}
+	if got.ID != id {
+		t.Errorf("the record keeps its identity, got %q want %q", got.ID, id)
+	}
+	if _, err := os.Stat(filepath.Join(dir, storeDirName, retractedLogName)); err == nil {
+		t.Error("regrounding wrote to the retraction log; that log counts records that were WRONG")
+	}
+
+	// The claim itself is untouched — only what backs it up moved.
+	after, err := Load(filepath.Join(dir, storeDirName, recordsFileName))
+	if err != nil || len(after) != 1 {
+		t.Fatalf("the record must still be there, got %d (%v)", len(after), err)
+	}
+	if after[0].Decision != "namespace session keys" || after[0].Start != 2 {
+		t.Errorf("reground touched the claim, not just the grounds: %+v", after[0])
 	}
 }
 

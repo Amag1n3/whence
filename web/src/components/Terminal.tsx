@@ -14,7 +14,7 @@ type Out = { text: string; tone?: 'ochre' | 'dim' | 'plain' }
  *  auth defect. Same bug class, same symptom, invented service. */
 const OUTPUT: Out[] = [
   { text: '' },
-  { text: '  ● 2026-07-27 · code review, finding B5 · confidence 1.00', tone: 'ochre' },
+  { text: '  ● 2026-07-27 · code review, finding B5', tone: 'ochre' },
   { text: '    Never write shared session keys from the checkout flow —' },
   { text: '    namespace all three to CHECKOUT_*.' },
   { text: '    "userToken", "userId" and "role" are all read by the staff', tone: 'dim' },
@@ -22,8 +22,8 @@ const OUTPUT: Out[] = [
   { text: '    operator out mid-session, and it surfaces as HTTP 200 with', tone: 'dim' },
   { text: '    {"message":"API TIMEOUT"} — which looks like a network', tone: 'dim' },
   { text: '    problem and is not one.', tone: 'dim' },
-  { text: '    evidence: dashboard/Header.tsx:88-94 · anchored, exact range', tone: 'dim' },
-  { text: '    src/auth/session.go:142-148 · anchored, exact range  [b5]', tone: 'dim' },
+  { text: '    evidence: dashboard/Header.tsx:88-94 · intact, exact range', tone: 'dim' },
+  { text: '    src/auth/session.go:142-148 · intact, exact range  [b5]', tone: 'dim' },
 ]
 
 const TYPE_MS = 24

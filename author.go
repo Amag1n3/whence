@@ -51,13 +51,13 @@ func addCmd(args []string) {
 
 	file, start, end := splitSpan(target)
 	if start == 0 {
-		fmt.Fprintln(os.Stderr, "why: add needs a line or a range, e.g. auth.go:142-148")
+		fmt.Fprintln(os.Stderr, "whence: add needs a line or a range, e.g. auth.go:142-148")
 		os.Exit(2)
 	}
 
 	rec, store, err := add(file, start, end, *decision, *why, *source, author(*asAgent), evidence)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "why:", err)
+		fmt.Fprintln(os.Stderr, "whence:", err)
 		os.Exit(1)
 	}
 	fmt.Println(store)
@@ -99,7 +99,7 @@ func confirmCmd(args []string) {
 		}
 		rs[i].Verified = time.Now().Format("2006-01-02")
 		if err := save(store, rs); err != nil {
-			fmt.Fprintln(os.Stderr, "why:", err)
+			fmt.Fprintln(os.Stderr, "whence:", err)
 			os.Exit(1)
 		}
 		fmt.Printf("confirmed [%s]\n", rs[i].ID)
@@ -110,15 +110,81 @@ func confirmCmd(args []string) {
 		})
 		return
 	}
-	fmt.Fprintf(os.Stderr, "why: no record [%s] in %s\n", args[0], store)
+	fmt.Fprintf(os.Stderr, "whence: no record [%s] in %s\n", args[0], store)
 	os.Exit(1)
+}
+
+// --- re-pointing evidence -----------------------------------------------
+
+// regroundCmd replaces a record's evidence without retracting the record.
+//
+// Evidence rots independently of the claim it supports: the code cited as
+// grounds gets edited, the pointer goes weak or orphaned, and the record itself
+// stays perfectly anchored and perfectly true. Fixing that used to mean `rm`
+// then `add` — and `rm` writes to retracted.jsonl, the log whose entire purpose
+// is counting how often a record turned out to be WRONG. Routine bookkeeping
+// would have inflated the one number that measures whether this store can be
+// trusted, so re-pointing needs its own verb.
+//
+// The whole list is replaced rather than appended to. Grounds are a set of
+// claims about what makes a record true, and an append-only flag would leave
+// the stale pointer sitting next to the one that replaced it — two answers to
+// the same question, which is the condition this command exists to end. No -e
+// at all is therefore a deliberate way to say the record now rests on nothing
+// checkable, which is honest and sometimes correct.
+func regroundCmd(args []string) {
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		fmt.Fprintln(os.Stderr, `usage: whence reground <id> -e <evidence> [-e ...]`)
+		os.Exit(2)
+	}
+	fl := flag.NewFlagSet("reground", flag.ExitOnError)
+	var evidence multiFlag
+	fl.Var(&evidence, "e", "what makes this record true, re-pointed (repeatable)")
+	if err := fl.Parse(args[1:]); err != nil {
+		os.Exit(2)
+	}
+
+	rec, store, err := reground(args[0], evidence)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "whence:", err)
+		os.Exit(1)
+	}
+	fmt.Println(store)
+	// Resolved, so a pointer that was already stale when it was typed shows as
+	// stale immediately rather than three months from now.
+	print1(rec)
+}
+
+// reground swaps in a fresh evidence list, anchored against the files as they
+// stand now, and returns the record as it resolves.
+func reground(id string, refs []string) (Resolved, string, error) {
+	store, root, rs := openStore()
+	for i := range rs {
+		if rs[i].ID != id {
+			continue
+		}
+		ev, err := buildEvidence(root, refs)
+		if err != nil {
+			return Resolved{}, store, err
+		}
+		rs[i].Evidence = ev
+		if err := save(store, rs); err != nil {
+			return Resolved{}, store, err
+		}
+		return Resolved{
+			Record:  rs[i],
+			Anchor:  resolveAnchor(fileLines(filepath.Join(root, rs[i].File)), rs[i]),
+			Grounds: resolveEvidence(root, rs[i]),
+		}, store, nil
+	}
+	return Resolved{}, store, fmt.Errorf("no record [%s] in %s", id, store)
 }
 
 // openStore finds the store from the working directory and loads it, or exits.
 func openStore() (store, root string, rs []Record) {
 	cwd, err := os.Getwd()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "why:", err)
+		fmt.Fprintln(os.Stderr, "whence:", err)
 		os.Exit(1)
 	}
 	store, root, ok := FindStore(filepath.Join(cwd, "x"))
@@ -128,7 +194,7 @@ func openStore() (store, root string, rs []Record) {
 	}
 	rs, err = Load(store)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "why:", err)
+		fmt.Fprintln(os.Stderr, "whence:", err)
 		os.Exit(1)
 	}
 	return store, root, rs
@@ -407,11 +473,11 @@ func rmCmd(args []string) {
 		kept = append(kept, r)
 	}
 	if gone == nil {
-		fmt.Fprintf(os.Stderr, "why: no record [%s] in %s\n", id, store)
+		fmt.Fprintf(os.Stderr, "whence: no record [%s] in %s\n", id, store)
 		os.Exit(1)
 	}
 	if err := save(store, kept); err != nil {
-		fmt.Fprintln(os.Stderr, "why:", err)
+		fmt.Fprintln(os.Stderr, "whence:", err)
 		os.Exit(1)
 	}
 	appendRetracted(root, *gone, *reason)
@@ -462,7 +528,7 @@ func backfillCmd(args []string) {
 	}
 	abs, err := filepath.Abs(dir)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "why:", err)
+		fmt.Fprintln(os.Stderr, "whence:", err)
 		os.Exit(1)
 	}
 
@@ -494,9 +560,9 @@ func backfillCmd(args []string) {
 					continue
 				}
 			}
-			r, _, err := add(p, f.start, f.end, decision, why, backfillSource, authorHuman, nil)
+			r, _, err := add(p, f.start, f.end, decision, why, f.src, authorHuman, nil)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "why: %s:%d — %v\n", rel, f.start, err)
+				fmt.Fprintf(os.Stderr, "whence: %s:%d — %v\n", rel, f.start, err)
 				continue
 			}
 			added++
@@ -505,16 +571,49 @@ func backfillCmd(args []string) {
 		return nil
 	})
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "why:", err)
+		fmt.Fprintln(os.Stderr, "whence:", err)
 		os.Exit(1)
 	}
 	fmt.Printf("\n%d record(s) added, %d already present\n", added, skipped)
 }
 
-const (
-	marker         = "ponytail:"
-	backfillSource = "ponytail comment"
-	maxSourceBytes = 1 << 20
+const maxSourceBytes = 1 << 20
+
+// The marker set: which comment prefixes count as a decision.
+//
+// This is the whole reach of backfill. A store that starts empty is a tool that
+// does nothing on day one, and `ponytail:` alone only exists in repos already
+// using that plugin — so in anyone else's repository backfill found nothing and
+// whence arrived useless.
+//
+// The markers people actually write split cleanly in two, and the split is what
+// keeps recall from costing precision.
+var (
+	// alwaysMarkers are never written about something obvious. The word itself
+	// is the admission that a choice was made against a constraint, so the
+	// comment is a decision by construction.
+	alwaysMarkers = []string{"ponytail:", "HACK:", "WORKAROUND:", "XXX:", "GOTCHA:"}
+
+	// reasonMarkers are mostly descriptive. Harvesting them wholesale fills a
+	// committed, shared store with "fix this later", which is a task wearing a
+	// decision's clothes — and a store full of those is one people stop reading,
+	// which is worse than an empty one. They are admitted only when the note says
+	// WHY, because that is the only part a record exists to carry.
+	reasonMarkers = []string{"NOTE:", "TODO:", "FIXME:", "WARNING:", "CAVEAT:"}
+
+	// reasonWords are what giving a reason sounds like. Deliberately a small,
+	// boring list: every word here is one people write without thinking about it,
+	// which is the point — a heuristic nobody has to learn.
+	//
+	// ponytail: conservative word list, so real reasons phrased around it are
+	// missed — "the upstream 502s, so one attempt fails" has no word from this
+	// list. Left narrow on purpose: a missed note is recoverable by hand, and a
+	// garbage record in a committed shared store is not. Widen only against real
+	// misses from a real repo, never by imagining phrasings.
+	reasonWords = []string{
+		"because", "so that", "otherwise", "since", "to avoid",
+		"rather than", "instead of", "reason", "caused",
+	}
 )
 
 var skipDir = map[string]bool{
@@ -527,6 +626,7 @@ var skipDir = map[string]bool{
 type found struct {
 	start, end int
 	text       string
+	src        string // which marker produced it, recorded as the record's source
 }
 
 // readSource reads a file if it plausibly holds source. Binary sniffing is a NUL
@@ -580,10 +680,13 @@ func harvest(lines []string) []found {
 	var out []found
 	for i := 0; i < len(lines); i++ {
 		body, isComment := commentBody(lines[i])
-		if !isComment || !strings.HasPrefix(body, marker) {
+		if !isComment {
 			continue
 		}
-		text := strings.TrimSpace(strings.TrimPrefix(body, marker))
+		text, src, needsReason, ok := openingMarker(body)
+		if !ok {
+			continue
+		}
 		j := i + 1
 		for j < len(lines) {
 			c, isComment := commentBody(lines[j])
@@ -597,12 +700,73 @@ func harvest(lines []string) []found {
 		if end > len(lines) {
 			end = len(lines)
 		}
-		if text != "" {
-			out = append(out, found{start: i + 1, end: end, text: text})
+		// The reason test runs on the WHOLE note, not the opening line. People
+		// state the shortcut first and justify it underneath, which is the shape
+		// worth harvesting; testing the first line alone would reject exactly the
+		// well-written ones.
+		if text != "" && (!needsReason || hasReason(text)) {
+			out = append(out, found{start: i + 1, end: end, text: text, src: src})
 		}
 		i = j
 	}
 	return out
+}
+
+// openingMarker matches a comment body against the marker set, returning the
+// note with the marker stripped, the source to record it under, and whether it
+// still has to prove itself by giving a reason.
+func openingMarker(body string) (text, src string, needsReason, ok bool) {
+	for _, m := range alwaysMarkers {
+		if t, hit := afterMarker(body, m); hit {
+			return t, sourceFor(m), false, true
+		}
+	}
+	for _, m := range reasonMarkers {
+		if t, hit := afterMarker(body, m); hit {
+			return t, sourceFor(m), true, true
+		}
+	}
+	return "", "", false, false
+}
+
+// afterMarker strips a marker from the front of a comment body, tolerating the
+// owner form (`TODO(amogh):`) that every codebase writes at least once.
+//
+// Anchored to the START of the body on purpose. A line merely containing the
+// word harvests the constant defining it, every test fixture quoting it, and
+// every comment discussing it — all of which live in this file.
+func afterMarker(body, m string) (string, bool) {
+	if strings.HasPrefix(body, m) {
+		return strings.TrimSpace(strings.TrimPrefix(body, m)), true
+	}
+	name := strings.TrimSuffix(m, ":")
+	if !strings.HasPrefix(body, name+"(") {
+		return "", false
+	}
+	if i := strings.Index(body, "):"); i > 0 {
+		return strings.TrimSpace(body[i+2:]), true
+	}
+	return "", false
+}
+
+// hasReason reports whether a note explains itself rather than only issuing an
+// instruction. This is the entire filter that lets ordinary markers in without
+// letting the noise in with them.
+func hasReason(s string) bool {
+	l := strings.ToLower(s)
+	for _, w := range reasonWords {
+		if strings.Contains(l, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// sourceFor turns a marker into the source string a record carries, so `whence
+// log` says where a decision was found. "ponytail:" stays "ponytail comment",
+// which is what the records written before the marker set already say.
+func sourceFor(m string) string {
+	return strings.TrimSuffix(m, ":") + " comment"
 }
 
 // commentBody returns a comment line's text and whether the line is a comment at
