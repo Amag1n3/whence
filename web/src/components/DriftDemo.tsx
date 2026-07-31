@@ -17,7 +17,7 @@ type Stage = {
   start: number
   confidence: number
   state: string
-  tone: 'moss' | 'honey' | 'oxide'
+  tone: 'verdigris' | 'ochre' | 'cinnabar'
 }
 
 const HEAD: Line[] = [{ id: 'h1', text: 'const persist = (session) => {' }]
@@ -40,7 +40,7 @@ const STAGES: Stage[] = [
     start: 1450,
     confidence: 1,
     state: 'anchored · exact range',
-    tone: 'moss',
+    tone: 'verdigris',
   },
   {
     key: 'moved',
@@ -57,7 +57,7 @@ const STAGES: Stage[] = [
     start: 1450,
     confidence: 0.91,
     state: 'anchored · content hash',
-    tone: 'moss',
+    tone: 'verdigris',
   },
   {
     key: 'rewritten',
@@ -74,7 +74,7 @@ const STAGES: Stage[] = [
     start: 1450,
     confidence: 0.24,
     state: 'orphaned · needs a human',
-    tone: 'oxide',
+    tone: 'cinnabar',
   },
 ]
 
@@ -95,9 +95,9 @@ export function DriftDemo() {
 
   const stage = STAGES[i]
   const toneText =
-    stage.tone === 'oxide' ? 'text-oxide' : stage.tone === 'honey' ? 'text-honey' : 'text-moss'
+    stage.tone === 'cinnabar' ? 'text-cinnabar' : stage.tone === 'ochre' ? 'text-ochre' : 'text-verdigris'
   const toneBg =
-    stage.tone === 'oxide' ? 'bg-oxide' : stage.tone === 'honey' ? 'bg-honey' : 'bg-moss'
+    stage.tone === 'cinnabar' ? 'bg-cinnabar' : stage.tone === 'ochre' ? 'bg-ochre' : 'bg-verdigris'
 
   return (
     <div
@@ -107,7 +107,7 @@ export function DriftDemo() {
       {/* the file */}
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-white/[0.07] px-4 py-2.5">
-          <span className="font-mono text-[11px] text-white/35">
+          <span className="font-mono text-[11px] text-silt/35">
             src/auth/session.go
           </span>
           <span
@@ -134,16 +134,16 @@ export function DriftDemo() {
                   className={cn(
                     'flex items-baseline gap-4 border-l-2 pr-6 transition-colors duration-500',
                     l.anchored
-                      ? stage.tone === 'oxide'
-                        ? 'border-oxide bg-oxide/[0.08]'
-                        : 'border-moss bg-moss/[0.07]'
+                      ? stage.tone === 'cinnabar'
+                        ? 'border-cinnabar bg-cinnabar/[0.08]'
+                        : 'border-verdigris bg-verdigris/[0.07]'
                       : 'border-transparent',
                   )}
                 >
-                  <span className="w-14 shrink-0 pl-2 text-right text-white/25 tabular-nums">
+                  <span className="w-14 shrink-0 pl-2 text-right text-silt/25 tabular-nums">
                     {stage.start + idx}
                   </span>
-                  <span className={cn(l.anchored ? 'text-foreground/90' : 'text-white/45')}>
+                  <span className={cn(l.anchored ? 'text-silt/90' : 'text-silt/45')}>
                     {l.text || ' '}
                   </span>
                 </motion.div>
@@ -157,7 +157,7 @@ export function DriftDemo() {
       <div className="flex flex-col gap-5 border-t border-white/[0.07] bg-white/[0.015] p-5 lg:border-t-0 lg:border-l">
         <div>
           <div className="flex items-baseline justify-between">
-            <span className="font-mono text-[11px] text-white/35">record [b5]</span>
+            <span className="font-mono text-[11px] text-silt/35">record [b5]</span>
             <span className={cn('font-mono text-[15px] tabular-nums', toneText)}>
               {stage.confidence.toFixed(2)}
             </span>
@@ -169,7 +169,7 @@ export function DriftDemo() {
               transition={{ duration: 0.7, ease: [0.16, 0.8, 0.28, 1] }}
             />
           </div>
-          <p className="mt-1.5 font-mono text-[10.5px] tracking-wide text-white/30">
+          <p className="mt-1.5 font-mono text-[10.5px] tracking-wide text-silt/30">
             confidence
           </p>
         </div>
@@ -186,7 +186,7 @@ export function DriftDemo() {
                 'rounded-md px-2.5 py-1.5 text-left font-mono text-[11px] tracking-wide transition-colors',
                 idx === i
                   ? 'bg-white/10 text-foreground'
-                  : 'text-white/35 hover:bg-white/[0.04] hover:text-white/65',
+                  : 'text-silt/35 hover:bg-white/[0.04] hover:text-silt/65',
               )}
             >
               {String(idx + 1).padStart(2, '0')}  {s.label}
@@ -201,7 +201,7 @@ export function DriftDemo() {
             animate={{ opacity: 1, y: 0 }}
             exit={reduced ? undefined : { opacity: 0, y: -4 }}
             transition={{ duration: 0.3 }}
-            className="text-[13px] leading-[1.65] text-white/55"
+            className="text-[13px] leading-[1.65] text-silt/55"
           >
             {stage.caption}
           </motion.p>

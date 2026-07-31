@@ -1,8 +1,11 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
-import '@fontsource-variable/bricolage-grotesque'
-import '@fontsource-variable/geist'
+// wdth.css, not index.css — it carries the width axis (font-stretch 62–125%)
+// as well as weight. Headings are set expanded so they read as horizontal
+// bands, which is the whole conceit.
+import '@fontsource-variable/archivo/wdth.css'
+import '@fontsource-variable/instrument-sans'
 import '@fontsource-variable/jetbrains-mono'
 import './index.css'
 
