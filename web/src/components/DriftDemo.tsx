@@ -100,72 +100,81 @@ export function DriftDemo() {
     stage.tone === 'oxide' ? 'bg-oxide' : stage.tone === 'honey' ? 'bg-honey' : 'bg-moss'
 
   return (
-    <div ref={ref} className="lit overflow-hidden rounded-xl border border-white/10 bg-terminal">
-      {/* record header */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-white/[0.07] px-4 py-2.5">
-        <span className="font-mono text-[11px] text-white/35">record [b5]</span>
-        <span
-          className={cn(
-            'font-mono text-[11px] transition-colors duration-500',
-            toneText,
-          )}
-        >
-          {stage.state}
-        </span>
-        <div className="ml-auto flex items-center gap-2">
-          <div className="h-1 w-20 overflow-hidden rounded-full bg-white/10">
+    <div
+      ref={ref}
+      className="lit grid overflow-hidden rounded-xl border border-white/10 bg-terminal lg:grid-cols-[minmax(0,1fr)_21rem]"
+    >
+      {/* the file */}
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-white/[0.07] px-4 py-2.5">
+          <span className="font-mono text-[11px] text-white/35">
+            src/auth/session.go
+          </span>
+          <span
+            className={cn(
+              'ml-auto font-mono text-[11px] transition-colors duration-500',
+              toneText,
+            )}
+          >
+            {stage.state}
+          </span>
+        </div>
+
+        <div className="term-scroll min-h-[210px] overflow-x-auto py-4">
+          <div className="min-w-max font-mono text-[12px] leading-[1.85] sm:text-[12.5px]">
+            <AnimatePresence initial={false}>
+              {stage.lines.map((l, idx) => (
+                <motion.div
+                  key={l.id}
+                  layout={!reduced}
+                  initial={reduced ? false : { opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={reduced ? undefined : { opacity: 0, x: 8 }}
+                  transition={{ duration: 0.38, ease: [0.16, 0.8, 0.28, 1] }}
+                  className={cn(
+                    'flex items-baseline gap-4 border-l-2 pr-6 transition-colors duration-500',
+                    l.anchored
+                      ? stage.tone === 'oxide'
+                        ? 'border-oxide bg-oxide/[0.08]'
+                        : 'border-moss bg-moss/[0.07]'
+                      : 'border-transparent',
+                  )}
+                >
+                  <span className="w-14 shrink-0 pl-2 text-right text-white/25 tabular-nums">
+                    {stage.start + idx}
+                  </span>
+                  <span className={cn(l.anchored ? 'text-foreground/90' : 'text-white/45')}>
+                    {l.text || ' '}
+                  </span>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        </div>
+      </div>
+
+      {/* side rail: what the anchor is doing, and why */}
+      <div className="flex flex-col gap-5 border-t border-white/[0.07] bg-white/[0.015] p-5 lg:border-t-0 lg:border-l">
+        <div>
+          <div className="flex items-baseline justify-between">
+            <span className="font-mono text-[11px] text-white/35">record [b5]</span>
+            <span className={cn('font-mono text-[15px] tabular-nums', toneText)}>
+              {stage.confidence.toFixed(2)}
+            </span>
+          </div>
+          <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
             <motion.div
               className={cn('h-full rounded-full', toneBg)}
               animate={{ width: `${stage.confidence * 100}%` }}
               transition={{ duration: 0.7, ease: [0.16, 0.8, 0.28, 1] }}
             />
           </div>
-          <span className={cn('font-mono text-[11px] tabular-nums', toneText)}>
-            {stage.confidence.toFixed(2)}
-          </span>
+          <p className="mt-1.5 font-mono text-[10.5px] tracking-wide text-white/30">
+            confidence
+          </p>
         </div>
-      </div>
 
-      {/* the file */}
-      <div className="term-scroll min-h-[188px] overflow-x-auto px-4 py-4">
-        <div className="min-w-max font-mono text-[12px] leading-[1.75] sm:text-[12.5px]">
-          <AnimatePresence initial={false}>
-            {stage.lines.map((l, idx) => (
-              <motion.div
-                key={l.id}
-                layout={!reduced}
-                initial={reduced ? false : { opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={reduced ? undefined : { opacity: 0, x: 8 }}
-                transition={{ duration: 0.38, ease: [0.16, 0.8, 0.28, 1] }}
-                className={cn(
-                  'flex items-baseline gap-3 border-l-2 pr-3 transition-colors duration-500',
-                  l.anchored
-                    ? stage.tone === 'oxide'
-                      ? 'border-oxide bg-oxide/[0.08]'
-                      : 'border-moss bg-moss/[0.07]'
-                    : 'border-transparent',
-                )}
-              >
-                <span className="w-11 shrink-0 pl-2 text-right text-white/25 tabular-nums">
-                  {stage.start + idx}
-                </span>
-                <span
-                  className={cn(
-                    l.anchored ? 'text-foreground/90' : 'text-white/45',
-                  )}
-                >
-                  {l.text || ' '}
-                </span>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
-      </div>
-
-      {/* stage control */}
-      <div className="border-t border-white/[0.07] px-4 py-3.5">
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-col gap-1">
           {STAGES.map((s, idx) => (
             <button
               key={s.key}
@@ -174,16 +183,17 @@ export function DriftDemo() {
                 setHeld(true)
               }}
               className={cn(
-                'rounded-full px-2.5 py-1 font-mono text-[10.5px] tracking-wide transition-colors',
+                'rounded-md px-2.5 py-1.5 text-left font-mono text-[11px] tracking-wide transition-colors',
                 idx === i
                   ? 'bg-white/10 text-foreground'
-                  : 'text-white/35 hover:text-white/65',
+                  : 'text-white/35 hover:bg-white/[0.04] hover:text-white/65',
               )}
             >
-              {String(idx + 1).padStart(2, '0')} {s.label}
+              {String(idx + 1).padStart(2, '0')}  {s.label}
             </button>
           ))}
         </div>
+
         <AnimatePresence mode="wait">
           <motion.p
             key={stage.key}
@@ -191,7 +201,7 @@ export function DriftDemo() {
             animate={{ opacity: 1, y: 0 }}
             exit={reduced ? undefined : { opacity: 0, y: -4 }}
             transition={{ duration: 0.3 }}
-            className="mt-2.5 max-w-[62ch] text-[13.5px] leading-relaxed text-white/55"
+            className="text-[13px] leading-[1.65] text-white/55"
           >
             {stage.caption}
           </motion.p>
