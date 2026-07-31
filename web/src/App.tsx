@@ -1,6 +1,6 @@
 import { motion, useReducedMotion } from 'motion/react'
 import { ArrowUpRight, Check, Minus } from 'lucide-react'
-import type { ReactNode } from 'react'
+import type { MouseEvent, ReactNode } from 'react'
 
 import { Reveal } from '@/components/Reveal'
 import { Terminal } from '@/components/Terminal'
@@ -17,6 +17,18 @@ const REPO = 'https://github.com/Amag1n3/whence'
    runs past ~70 characters. Width comes from structure, not from letting
    lines stretch. */
 const SHELL = 'mx-auto w-full max-w-[1320px] px-6 sm:px-10'
+
+/** Scroll to a section without writing a hash into the address bar. The href
+ *  stays on the anchor so it still works without JS and reads correctly to a
+ *  screen reader. No `behavior` argument on purpose — that defers to the CSS
+ *  `scroll-behavior`, which the reduced-motion block already overrides. */
+function jump(id: string) {
+  return (e: MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault()
+    if (id === 'top') window.scrollTo({ top: 0 })
+    else document.getElementById(id)?.scrollIntoView()
+  }
+}
 
 /* ---------------------------------------------------------------- shell */
 
@@ -50,17 +62,29 @@ function Nav() {
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.06] bg-background/70 backdrop-blur-xl">
       <nav className={cn(SHELL, 'flex h-14 items-center gap-6')}>
-        <a href="#top" className="font-mono text-[13.5px] font-medium tracking-tight">
+        <a
+          href="#top"
+          onClick={jump('top')}
+          className="font-mono text-[13.5px] font-medium tracking-tight"
+        >
           <span className="text-moss">●</span> whence
         </a>
         <div className="ml-auto flex items-center gap-6 font-mono text-[12.5px] text-muted-foreground">
-          <a href="#how" className="transition-colors hover:text-foreground">
+          <a href="#how" onClick={jump('how')} className="transition-colors hover:text-foreground">
             how
           </a>
-          <a href="#anchoring" className="hidden transition-colors hover:text-foreground sm:inline">
+          <a
+            href="#anchoring"
+            onClick={jump('anchoring')}
+            className="hidden transition-colors hover:text-foreground sm:inline"
+          >
             anchoring
           </a>
-          <a href="#start" className="transition-colors hover:text-foreground">
+          <a
+            href="#start"
+            onClick={jump('start')}
+            className="transition-colors hover:text-foreground"
+          >
             quickstart
           </a>
           <a
@@ -297,7 +321,9 @@ export default function App() {
                 </p>
                 <div className="mt-7 flex flex-wrap gap-3">
                   <Button asChild size="lg" className="rounded-full font-medium">
-                    <a href="#start">Try it in five minutes</a>
+                    <a href="#start" onClick={jump('start')}>
+                      Try it in five minutes
+                    </a>
                   </Button>
                   <Button
                     asChild
