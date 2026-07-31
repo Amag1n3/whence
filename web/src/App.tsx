@@ -4,6 +4,7 @@ import type { MouseEvent, ReactNode } from 'react'
 import { Reveal } from '@/components/Reveal'
 import { Terminal } from '@/components/Terminal'
 import { DriftDemo } from '@/components/DriftDemo'
+import { Gate } from '@/components/Gate'
 import { StrataRail, type Stratum } from '@/components/StrataRail'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -20,6 +21,7 @@ const STRATA: Stratum[] = [
   { id: 'status', label: 'what runs today' },
   { id: 'how', label: 'how it works' },
   { id: 'anchoring', label: 'anchoring' },
+  { id: 'gate', label: 'the gate' },
   { id: 'start', label: 'quickstart' },
   { id: 'scope', label: 'what it isn’t' },
   { id: 'handling', label: 'your code' },
@@ -173,28 +175,36 @@ function Code({ children, caption }: { children: string; caption?: string }) {
 /* ----------------------------------------------------------------- data */
 
 const LEDGER = [
-  { on: true, t: 'why <file>:<line>', d: 'Recorded decisions for a file, or for one line.' },
   {
     on: true,
     t: 'The PreToolUse hook',
-    d: 'Records reach Claude Code before it edits. Fails open: a broken why costs you nothing but a missing record.',
+    d: 'Records reach Claude Code before it edits, in 6ms. Fails open — a broken why costs you nothing but a missing record.',
   },
   {
     on: true,
-    t: 'Store resolution by file',
-    d: 'Walks up from the edited file the way git finds .git, so a session in one repo still resolves records for a sibling repo.',
+    t: 'Content-hash anchoring',
+    d: 'A record follows its code as it moves, decays when the code is rewritten, and reports itself orphaned rather than pointing at the wrong line.',
+  },
+  {
+    on: true,
+    t: 'why check',
+    d: 'The CI gate. Reports the decisions covering a diff, and the ones the diff just severed. Exit 1.',
+  },
+  {
+    on: true,
+    t: 'Evidence',
+    d: 'A record can point at what makes it true. Point at code and that pointer is anchored too, so it can rot on its own.',
+  },
+  {
+    on: true,
+    t: 'why backfill',
+    d: 'Harvests decisions already written in your code as ponytail: comments, so day one is not an empty store.',
   },
   {
     on: false,
     t: 'Capture',
-    d: 'Records are hand-written. Pulling signal out of a session is the hard part.',
+    d: 'Records are authored deliberately. Deciding which slice of a session is worth keeping is the actual hard part, and it is not built.',
   },
-  {
-    on: false,
-    t: 'Hybrid anchoring',
-    d: 'Content hash, AST path, confidence decay, orphan states.',
-  },
-  { on: false, t: 'why check', d: 'The CI gate. The exit code is the product.' },
 ]
 
 const STEPS = [
@@ -205,13 +215,13 @@ const STEPS = [
   },
   {
     t: 'Anchor',
-    tag: 'exact ranges only',
-    d: 'Bind each record to a file and a span. Today that span is a hand-written line range.',
+    tag: 'works',
+    d: 'Hash every significant line of the span. Reindent and reformat freely — nothing moves. Insert above it and the record follows down. Rewrite it and confidence falls until the record calls itself orphaned and claims no line at all.',
   },
   {
     t: 'Surface',
     tag: 'works',
-    d: 'From your terminal, and into a coding agent’s context through a PreToolUse hook before it edits. Phase 2 adds CI.',
+    d: 'From your terminal, into a coding agent’s context through a PreToolUse hook before it edits, and in CI as a gate that fails the build.',
   },
 ]
 
@@ -229,7 +239,11 @@ const COMMITMENTS: [string, string][] = [
   ],
   [
     'Records are data, never directives',
-    'They arrive by git pull, so anyone who can land a commit can put text in front of your agent. Records are framed as history, and marked untrusted when they are not yours.',
+    'They arrive by git pull, so anyone who can land a commit can put text in front of your agent. Every injected block is framed as history to be aware of, not instruction to follow.',
+  ],
+  [
+    'A record no human has read says so',
+    'A person writing one is a deliberate act of attention; an agent writing one is none. Agent-authored records are marked unchecked until somebody confirms them — including in the block your agent receives. A record can also never cite another record as its evidence, which is the link that would let one wrong record prop up the next.',
   ],
   [
     'Attribution stays aggregate',
@@ -277,7 +291,7 @@ export default function App() {
               <div className="mt-9 flex items-center gap-4">
                 <span className="h-px w-10 bg-ochre" />
                 <span className="font-mono text-[11px] tracking-[0.16em] text-dim uppercase">
-                  datum · phase 0 · surfacing works · capture not built
+                  datum · surfacing, anchoring and the CI gate run · capture does not
                 </span>
                 <span className="hidden h-px flex-1 bg-white/[0.08] sm:block" />
               </div>
@@ -422,13 +436,24 @@ export default function App() {
             </Reveal>
           </Layer>
 
+          {/* -------------------------------------------------------- gate */}
+          <Layer
+            id="gate"
+            depth="06"
+            eyebrow="the gate"
+            title="The exit code is the product"
+            lede="Everything else leads here. In CI, a diff is compared against the decisions that govern the lines it touches — and against the ones it just quietly severed."
+          >
+            <Gate />
+          </Layer>
+
           {/* --------------------------------------------------- quickstart */}
           <Layer
             id="start"
-            depth="06"
+            depth="07"
             eyebrow="quickstart"
             title="Try it in five minutes"
-            lede="Four steps. Records are hand-written for now."
+            lede="Four steps, about five minutes. You decide what gets recorded; the tool works out how to make it survive."
           >
             <div className="grid gap-x-14 gap-y-10 xl:grid-cols-2">
               <Reveal>
@@ -449,20 +474,19 @@ cd whence && go build -o why .`}</Code>
               <Reveal delay={0.05}>
                 <h3 className="mb-3 text-[16px]">
                   <span className="mr-2.5 font-mono text-[11.5px] text-dim">02</span>
-                  Write a record
+                  Record a decision
                 </h3>
-                <Code caption=".whence/records.json — commit this, it is the point">{`[
-  {
-    "id":         "b5",
-    "date":       "2026-07-27",
-    "source":     "code review, finding B5",
-    "file":       "src/auth/session.go",
-    "line_start": 142,
-    "line_end":   148,
-    "decision":   "Namespace all three session keys.",
-    "why":        "The admin dashboard reads them on the same origin..."
-  }
-]`}</Code>
+                <Code>{`why add src/auth/session.go:142-148 \\
+  -d "Namespace all three session keys to CHECKOUT_*." \\
+  -w "The admin dashboard reads them on the same origin." \\
+  -e dashboard/Header.tsx:88-94`}</Code>
+                <p className="mt-3 max-w-[56ch] text-[14.5px] leading-[1.65] text-muted-foreground">
+                  Writes <code className="font-mono text-silt">.whence/records.json</code> —
+                  commit it, that is the point. The line hashes that let the record survive
+                  the code moving are computed here; hand-writing the file gets you a line
+                  number and nothing that follows it. <code className="font-mono">-e</code>{' '}
+                  is optional and repeatable.
+                </p>
               </Reveal>
 
               <Reveal delay={0.1}>
@@ -498,13 +522,13 @@ why log                       # everything in the nearest store`}</Code>
           </Layer>
 
           {/* -------------------------------------------------------- scope */}
-          <Layer id="scope" depth="07" eyebrow="scope" title="What it isn’t">
+          <Layer id="scope" depth="08" eyebrow="scope" title="What it isn’t">
             <DefList items={NOTS} />
           </Layer>
 
           <Layer
             id="handling"
-            depth="08"
+            depth="09"
             eyebrow="commitments"
             title="What it does with your code"
             lede="This reads what an agent saw and did, which makes it sensitive by default."
@@ -521,7 +545,7 @@ why log                       # everything in the nearest store`}</Code>
                     <div>
                       <div className="flex items-center gap-4">
                         <span className="font-mono text-[11px] tracking-[0.18em] text-cinnabar">
-                          09
+                          10
                         </span>
                         <span className="font-mono text-[11px] tracking-[0.2em] text-cinnabar/70 uppercase">
                           falsification
@@ -543,16 +567,20 @@ why log                       # everything in the nearest store`}</Code>
                     </div>
                     <div className="space-y-4 border-t border-white/[0.08] pt-6 text-[14.5px] leading-[1.68] text-muted-foreground lg:border-t-0 lg:pt-1">
                       <p>
-                        Agreed before a line of code existed. The counter needs{' '}
-                        <code className="font-mono">why check</code> to mean anything —
-                        today’s log counts how often records were shown, which over-counts,
-                        and is not reported as the number above.
+                        Agreed before a line of code existed.{' '}
+                        <code className="font-mono">why check</code> is what makes it
+                        measurable, and it now runs. The surfacing log counts how often
+                        records were shown, which over-counts badly, and is deliberately not
+                        reported as the number above.
                       </p>
                       <p>
-                        The other open doubt: if an agent’s stated reasoning is a post-hoc
-                        rationalisation rather than the actual cause, this preserves
-                        confident nonsense — durably. That gets tested against real captured
-                        sessions before any Phase 1 work starts.
+                        And the number cannot see its own worst failure. If an agent’s
+                        stated reason is a story told afterwards rather than the actual
+                        cause, this preserves confident nonsense durably — and a store full
+                        of nonsense produces <em className="not-italic text-silt">more</em>{' '}
+                        catches, not fewer, so the count rises while the tool rots. That is
+                        why retractions are logged too, and why capture stays off until the
+                        faithfulness of stated reasoning has actually been measured.
                       </p>
                     </div>
                   </div>

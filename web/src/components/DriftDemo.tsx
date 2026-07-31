@@ -61,6 +61,25 @@ const STAGES: Stage[] = [
     tone: 'verdigris',
   },
   {
+    key: 'edited',
+    label: 'one line changes',
+    caption:
+      'Someone drops the namespace on one of the three keys. Three of the four anchored lines still hash; one does not. So it is still found — and reported as no longer trustworthy, at a number that says how much survived.',
+    lines: [
+      ...INSERTED,
+      ...HEAD,
+      ANCHORED[0],
+      ANCHORED[1],
+      ANCHORED[2],
+      { id: 'e1', text: '\tstore.Set("role",               s.Role)', anchored: true },
+      ...TAIL,
+    ],
+    start: 140,
+    confidence: 0.75,
+    state: 'weak — content changed',
+    tone: 'ochre',
+  },
+  {
     key: 'rewritten',
     label: 'the code is rewritten',
     caption:
@@ -78,7 +97,9 @@ const STAGES: Stage[] = [
   },
 ]
 
-const DWELL = 4200
+/* Four stages now, so each holds a little less — long enough to read the
+   caption, short enough that the whole cycle is watchable in one sitting. */
+const DWELL = 3800
 
 export function DriftDemo() {
   const ref = useRef<HTMLDivElement>(null)
@@ -136,7 +157,9 @@ export function DriftDemo() {
                     l.anchored
                       ? stage.tone === 'cinnabar'
                         ? 'border-cinnabar bg-cinnabar/[0.08]'
-                        : 'border-verdigris bg-verdigris/[0.07]'
+                        : stage.tone === 'ochre'
+                          ? 'border-ochre bg-ochre/[0.07]'
+                          : 'border-verdigris bg-verdigris/[0.07]'
                       : 'border-transparent',
                   )}
                 >

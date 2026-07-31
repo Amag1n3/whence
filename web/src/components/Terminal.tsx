@@ -22,6 +22,7 @@ const OUTPUT: Out[] = [
   { text: '    operator out mid-session, and it surfaces as HTTP 200 with', tone: 'dim' },
   { text: '    {"message":"API TIMEOUT"} — which looks like a network', tone: 'dim' },
   { text: '    problem and is not one.', tone: 'dim' },
+  { text: '    evidence: dashboard/Header.tsx:88-94 · anchored, exact range', tone: 'dim' },
   { text: '    src/auth/session.go:142-148 · anchored, exact range  [b5]', tone: 'dim' },
 ]
 
