@@ -46,7 +46,7 @@ const STAGES: Stage[] = [
     lines: [...HEAD, ...ANCHORED, ...TAIL],
     start: 140,
     confidence: 1,
-    state: 'anchored · exact range',
+    state: 'anchored, exact range',
     tone: 'verdigris',
   },
   {
@@ -56,15 +56,15 @@ const STAGES: Stage[] = [
       'Someone adds two lines above. Every line number in the record is now wrong — but the content still hashes the same, so the anchor follows it down.',
     lines: [...INSERTED, ...HEAD, ...ANCHORED, ...TAIL],
     start: 140,
-    confidence: 0.91,
-    state: 'anchored · content hash',
+    confidence: 0.9,
+    state: 'anchored, content hash',
     tone: 'verdigris',
   },
   {
     key: 'rewritten',
     label: 'the code is rewritten',
     caption:
-      'The block is refactored away. Nothing hashes, no AST path matches. The record is surfaced as orphaned — loudly — instead of quietly pointing at whatever now sits on line 143.',
+      'The block is refactored away. Nothing hashes — not at the recorded lines, not anywhere else in the file. The record is surfaced as orphaned, loudly, and claims no line number at all rather than quietly pointing at whatever now sits on 143.',
     lines: [
       ...INSERTED,
       ...HEAD,
@@ -72,8 +72,8 @@ const STAGES: Stage[] = [
       ...TAIL,
     ],
     start: 140,
-    confidence: 0.24,
-    state: 'orphaned · needs a human',
+    confidence: 0,
+    state: 'ORPHANED — needs a human',
     tone: 'cinnabar',
   },
 ]

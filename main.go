@@ -42,6 +42,10 @@ func main() {
 		hookPre()
 	case "log":
 		logAll()
+	case "add":
+		addCmd(os.Args[2:])
+	case "backfill":
+		backfillCmd(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -54,6 +58,9 @@ func usage() {
 
   why <file>[:<line>]   show recorded decisions for a file, or one line
   why log               list every record in the nearest store
+  why add <file>:<a>-<b> -d "decision" -w "why" [-s source]
+                        record a decision and anchor it to those lines
+  why backfill [dir]    harvest ponytail: comments already in the code
   why hook pre          (called by Claude Code; reads a hook payload on stdin)
 
 Records live in .whence/records.json, found by walking up from the file.
@@ -112,7 +119,7 @@ func hookPre() {
 	if err != nil || len(rs) == 0 {
 		os.Exit(0)
 	}
-	hits := Match(rs, Rel(root, abs), 0)
+	hits := Match(root, rs, Rel(root, abs), 0)
 	if len(hits) == 0 {
 		os.Exit(0)
 	}
@@ -128,16 +135,21 @@ func hookPre() {
 
 // renderContext formats records for an agent, under the 10k cap.
 //
-// ponytail: ranks newest-first and truncates. Real relevance ranking (does this
-// record concern the lines actually being changed? has it been contradicted
-// before?) needs the diff, which PreToolUse does not have. Revisit when
-// `why check` exists in Phase 2.
-func renderContext(rs []Record) string {
+// The anchor state goes in. An agent told "lines 142-148" when the code now
+// lives at 187 will edit the wrong place confidently, and an agent handed an
+// orphaned record as though it were current is being lied to. Uncertainty is
+// part of the payload, not a detail for the human view.
+//
+// ponytail: ranks live-anchors-then-newest and truncates. Real relevance
+// ranking (does this record concern the lines actually being changed? has it
+// been contradicted before?) needs the diff, which PreToolUse does not have.
+// Revisit when `why check` exists in Phase 2.
+func renderContext(rs []Resolved) string {
 	var b strings.Builder
 	b.WriteString(contextPreamble)
 	for i, r := range rs {
-		line := fmt.Sprintf("- [%s] %s:%d-%d — %s\n  why: %s\n  source: %s\n",
-			r.Date, r.File, r.Start, r.End, r.Decision, r.Why, r.Source)
+		line := fmt.Sprintf("- [%s] %s — %s\n  why: %s\n  anchor: %s%s\n  source: %s\n",
+			r.Date, locate(r), r.Decision, r.Why, r.Anchor.State, confidence(r), r.Source)
 		if b.Len()+len(line) > maxContext {
 			fmt.Fprintf(&b, "- (%d more record(s) omitted: context cap)\n", len(rs)-i)
 			break
@@ -147,6 +159,31 @@ func renderContext(rs []Record) string {
 	return b.String()
 }
 
+// locate renders where a record points, showing the recorded span alongside the
+// current one whenever they differ. Drift is information; collapsing the two
+// into one number throws it away.
+func locate(r Resolved) string {
+	switch {
+	case r.Anchor.Start == 0:
+		return fmt.Sprintf("%s:%d-%d (recorded; anchor lost)", r.File, r.Start, r.End)
+	case r.Anchor.Start != r.Start || r.Anchor.End != r.End:
+		return fmt.Sprintf("%s:%d-%d (recorded at %d-%d)",
+			r.File, r.Anchor.Start, r.Anchor.End, r.Start, r.End)
+	default:
+		return fmt.Sprintf("%s:%d-%d", r.File, r.Start, r.End)
+	}
+}
+
+// confidence renders the score, or nothing at all for a record that has no
+// anchor to score. A hand-written record showing "confidence 0.00" would read
+// as a failed anchor rather than an absent one.
+func confidence(r Resolved) string {
+	if r.Anchor.State == StateLineOnly {
+		return ""
+	}
+	return fmt.Sprintf(" · confidence %.2f", r.Anchor.Confidence)
+}
+
 // appendSurfaced logs that records were put in front of an agent. It writes
 // into the store that produced them, not the session directory.
 //
@@ -154,7 +191,7 @@ func renderContext(rs []Record) string {
 // over-counts — most surfacings are purely informational. The DECISIONS §8
 // falsification number needs `why check` comparing a diff against records
 // (Phase 2). Do not read this file as the falsification metric.
-func appendSurfaced(root, file string, rs []Record) {
+func appendSurfaced(root, file string, rs []Resolved) {
 	f, err := os.OpenFile(filepath.Join(root, storeDirName, surfacedLogName),
 		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
@@ -192,7 +229,7 @@ func query(target string) {
 		fmt.Fprintln(os.Stderr, "why:", err)
 		os.Exit(1)
 	}
-	hits := Match(rs, Rel(root, abs), line)
+	hits := Match(root, rs, Rel(root, abs), line)
 	if len(hits) == 0 {
 		fmt.Printf("no records for %s\n", target)
 		return
@@ -209,7 +246,7 @@ func logAll() {
 		os.Exit(1)
 	}
 	// Walk up from a sentinel inside cwd so FindStore checks cwd itself too.
-	store, _, ok := FindStore(filepath.Join(cwd, "x"))
+	store, root, ok := FindStore(filepath.Join(cwd, "x"))
 	if !ok {
 		fmt.Printf("no %s/%s found above %s\n", storeDirName, recordsFileName, cwd)
 		return
@@ -224,18 +261,26 @@ func logAll() {
 		return
 	}
 	fmt.Println(store)
+	// A record per file here, so one read each rather than Match's one read per
+	// file. `why log` is a human typing at a terminal; the hook is the path that
+	// has to be fast.
 	for _, r := range rs {
-		print1(r)
+		print1(Resolved{
+			Record: r,
+			Anchor: resolveAnchor(fileLines(filepath.Join(root, r.File)), r),
+		})
 	}
 }
 
-func print1(r Record) {
-	fmt.Printf("\n  ● %s · %s\n", r.Date, r.Source)
+func print1(r Resolved) {
+	fmt.Printf("\n  ● %s · %s%s\n", r.Date, r.Source, confidence(r))
 	fmt.Printf("    %s\n", r.Decision)
-	for _, l := range strings.Split(r.Why, "\n") {
-		fmt.Printf("    %s\n", l)
+	if r.Why != "" { // backfilled one-sentence notes have no separate why
+		for _, l := range strings.Split(r.Why, "\n") {
+			fmt.Printf("    %s\n", l)
+		}
 	}
-	fmt.Printf("    %s:%d-%d  [%s]\n", r.File, r.Start, r.End, r.ID)
+	fmt.Printf("    %s · %s  [%s]\n", locate(r), r.Anchor.State, r.ID)
 }
 
 // splitTarget parses "src/auth.go:42" into ("src/auth.go", 42). A path with no

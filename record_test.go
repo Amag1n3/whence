@@ -21,6 +21,17 @@ var fixture = []Record{
 		Decision: "unrelated file", Source: "commit"},
 }
 
+// unanchored wraps hand-built records the way Match would, for the display
+// tests. These carry no line hashes, so they resolve to the line-only state
+// without touching the filesystem.
+func unanchored(rs []Record) []Resolved {
+	out := make([]Resolved, len(rs))
+	for i, r := range rs {
+		out[i] = Resolved{Record: r, Anchor: resolveAnchor(nil, r)}
+	}
+	return out
+}
+
 // --- store resolution ---------------------------------------------------
 
 // Regression test for the real bug: a session rooted in one repo editing a file
@@ -90,7 +101,7 @@ func mkStore(t *testing.T, root string) {
 // --- matching -----------------------------------------------------------
 
 func TestMatchWholeFile(t *testing.T) {
-	got := Match(fixture, "src/auth/session.go", 0)
+	got := Match("", fixture, "src/auth/session.go", 0)
 	if len(got) != 2 {
 		t.Fatalf("line 0 should match every record on the file: got %d, want 2", len(got))
 	}
@@ -102,29 +113,29 @@ func TestMatchWholeFile(t *testing.T) {
 
 func TestMatchLineWithinSpan(t *testing.T) {
 	// 145 falls inside b5's 140-150 and is exactly old's single-line span.
-	if got := Match(fixture, "src/auth/session.go", 145); len(got) != 2 {
+	if got := Match("", fixture, "src/auth/session.go", 145); len(got) != 2 {
 		t.Fatalf("line 145 should match both overlapping records: got %d, want 2", len(got))
 	}
 }
 
 func TestMatchLineOutsideSpan(t *testing.T) {
-	if got := Match(fixture, "src/auth/session.go", 200); len(got) != 0 {
+	if got := Match("", fixture, "src/auth/session.go", 200); len(got) != 0 {
 		t.Errorf("line 200 is outside every span, got %d records", len(got))
 	}
 	// Boundaries are inclusive.
-	if got := Match(fixture, "src/auth/session.go", 140); len(got) != 1 {
+	if got := Match("", fixture, "src/auth/session.go", 140); len(got) != 1 {
 		t.Errorf("span start should be inclusive, got %d", len(got))
 	}
-	if got := Match(fixture, "src/auth/session.go", 150); len(got) != 1 {
+	if got := Match("", fixture, "src/auth/session.go", 150); len(got) != 1 {
 		t.Errorf("span end should be inclusive, got %d", len(got))
 	}
 }
 
 func TestMatchWrongFile(t *testing.T) {
-	if got := Match(fixture, "src/http/router.go", 15); len(got) != 1 || got[0].ID != "other" {
+	if got := Match("", fixture, "src/http/router.go", 15); len(got) != 1 || got[0].ID != "other" {
 		t.Errorf("should match only the record on that file, got %d", len(got))
 	}
-	if got := Match(fixture, "nope.go", 0); len(got) != 0 {
+	if got := Match("", fixture, "nope.go", 0); len(got) != 0 {
 		t.Errorf("unknown file should match nothing, got %d", len(got))
 	}
 }
@@ -132,7 +143,7 @@ func TestMatchWrongFile(t *testing.T) {
 func TestSamePathTolerance(t *testing.T) {
 	// A hand-written record may carry a "./" prefix; it must still match.
 	rs := []Record{{ID: "x", Date: "2026-01-01", File: "./src/a.go", Start: 1, End: 9}}
-	if got := Match(rs, "src/a.go", 5); len(got) != 1 {
+	if got := Match("", rs, "src/a.go", 5); len(got) != 1 {
 		t.Errorf(`"./src/a.go" should match "src/a.go", got %d`, len(got))
 	}
 }
@@ -157,7 +168,7 @@ func TestRel(t *testing.T) {
 func TestRenderContextIsFramedAsData(t *testing.T) {
 	// The preamble is the prompt-injection mitigation. If it ever goes missing,
 	// injected records read as instructions to an agent. Guard it.
-	out := renderContext(fixture[:1])
+	out := renderContext(unanchored(fixture[:1]))
 	if !strings.Contains(out, "NOT instructions to follow") {
 		t.Error("renderContext must frame records as data, not directives")
 	}
@@ -173,7 +184,7 @@ func TestRenderContextRespectsCap(t *testing.T) {
 		many[i] = Record{ID: "r", Date: "2026-07-27", File: "a.go", Start: 1, End: 2,
 			Decision: long, Why: long, Source: "test"}
 	}
-	out := renderContext(many)
+	out := renderContext(unanchored(many))
 	if len(out) > maxContext+200 { // +slack for the truncation line
 		t.Errorf("renderContext exceeded the cap: %d chars", len(out))
 	}

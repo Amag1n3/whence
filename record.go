@@ -17,12 +17,14 @@ const (
 
 // Record is one decision, anchored to a span of one file.
 //
-// Phase 0 anchors are hand-written and therefore exact: a repo-relative path
-// plus a line range. Phase 1 adds a normalised content hash and a tree-sitter
-// AST path so a record survives the code moving, plus a confidence score that
-// decays as the anchor drifts and an explicit orphaned state when it no longer
-// attaches to anything. None of that exists yet, on purpose — see
-// "01 - Phase 0 Plan" in the vault.
+// Start and End are where the decision was made, forever. They are not where it
+// points now — code moves, and Lines is what follows it. Never overwrite the
+// recorded range with a resolved one: the fact that a record has travelled 40
+// lines is information, and losing it makes drift invisible.
+//
+// Still absent, on purpose: the tree-sitter AST path from §6, and record
+// signing (§7.3), which lands with capture because it only matters once records
+// stop being written by a human.
 type Record struct {
 	ID       string `json:"id"`
 	Date     string `json:"date"` // ISO YYYY-MM-DD; sorted lexically, so the format matters
@@ -32,6 +34,19 @@ type Record struct {
 	End      int    `json:"line_end"`
 	Decision string `json:"decision"`
 	Why      string `json:"why"`
+
+	// Lines holds one hash per significant line of the recorded span — the
+	// anchor. Empty means a record written before anchoring existed, or by
+	// hand; those fall back to exact line ranges and say so when displayed.
+	Lines []string `json:"line_hashes,omitempty"`
+}
+
+// Resolved is a record plus where it actually points in the code as it stands.
+// Anchor is a named field rather than embedded because both halves have a Start
+// and an End, and that ambiguity is the one bug this type exists to prevent.
+type Resolved struct {
+	Record
+	Anchor Anchor
 }
 
 // FindStore walks up from a file looking for the nearest .whence/records.json,
@@ -83,25 +98,56 @@ func Load(path string) ([]Record, error) {
 	return rs, nil
 }
 
-// Match returns the records governing file, newest first.
+// Match returns the records governing file, each resolved against the file as
+// it is now, newest first.
 //
 // line == 0 means "anywhere in this file", which is what the hook asks for: an
 // agent about to edit a file has not told us which line it intends to touch, so
-// every record on the file is relevant. A specific line narrows to records
-// whose span contains it.
-func Match(rs []Record, file string, line int) []Record {
-	var out []Record
+// every record on the file is relevant. A specific line narrows to records whose
+// span contains it — the span they point at NOW, which is the entire reason
+// anchoring exists. A record that drifted from 142 to 187 has to answer to
+// `why file.go:187`, not to the line it was born on.
+//
+// root is where record paths are relative to, as reported by FindStore. It is
+// only used to read the file back for anchoring, so a caller with no root (a
+// test over hand-built records) still gets line-range behaviour.
+func Match(root string, rs []Record, file string, line int) []Resolved {
+	var out []Resolved
+	var lines []string
+	read := false
+
 	for _, r := range rs {
 		if !samePath(r.File, file) {
 			continue
 		}
-		if line != 0 && (line < r.Start || line > r.End) {
+		// One read per Match call, not per record: every record here is on the
+		// same file, and PreToolUse blocks the edit that is waiting on us.
+		if len(r.Lines) > 0 && !read {
+			lines, read = fileLines(filepath.Join(root, file)), true
+		}
+		a := resolveAnchor(lines, r)
+
+		// An orphan has no current span, so it cannot claim a specific line.
+		// It still surfaces in the whole-file view — an agent about to edit a
+		// file with a lost decision on it is exactly who needs to know.
+		if line != 0 && (a.Start == 0 || line < a.Start || line > a.End) {
 			continue
 		}
-		out = append(out, r)
+		out = append(out, Resolved{Record: r, Anchor: a})
 	}
-	// Newest first. Dates are ISO, so a string compare is a date compare.
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Date > out[j].Date })
+
+	// Live anchors first, then newest first. Dates are ISO, so a string compare
+	// is a date compare. Ordering is not cosmetic here: renderContext truncates
+	// at the context cap, so this decides what an agent actually sees, and a
+	// record whose anchor is lost should never crowd out one that holds.
+	sort.SliceStable(out, func(i, j int) bool {
+		oi := out[i].Anchor.State == StateOrphaned
+		oj := out[j].Anchor.State == StateOrphaned
+		if oi != oj {
+			return oj
+		}
+		return out[i].Date > out[j].Date
+	})
 	return out
 }
 

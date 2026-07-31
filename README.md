@@ -5,14 +5,17 @@
 ---
 
 > [!NOTE]
-> **Status: Phase 0 works. Records are written by hand.**
+> **Status: surfacing and anchoring work. Capture does not.**
 >
-> `why <file>:<line>` and the `PreToolUse` hook are real and tested. **Capture is
-> not built** — records live in `.whence/records.json` and you author them
-> yourself, deliberately: signal extraction is the hard problem, and hand-written
-> records are the spec for solving it.
+> Real and tested: `why <file>:<line>`, the `PreToolUse` hook, content-hash
+> anchoring with drifted / weak / orphaned states, `why add`, and `why backfill`
+> — which harvests decisions already written down as `ponytail:` comments, so a
+> store is non-empty without anyone retyping anything.
 >
-> Anything below describing capture, content-hash anchoring, confidence decay or
+> **Capture is not built.** Records are authored deliberately, because signal
+> extraction is the hard problem and curated records are the spec for solving it.
+>
+> Anything below describing capture, AST-path anchoring, record signing or
 > `why check` is intended behaviour, not shipped behaviour.
 >
 > Started 2026-07-31.
@@ -45,14 +48,24 @@ about, and puts it back in front of the next agent before it edits.
 ```console
 $ why src/auth/session.go:142
 
-  ● 2026-07-27 · code-review · confidence 0.94
-    Don't write shared session keys from this flow.
+  ● 2026-07-27 · code review, finding B5 · confidence 0.90
+    Never write shared session keys from this flow — namespace all three.
     "userToken", "userId" and "role" are all read by the admin
     dashboard — same origin, same app. Writing them here signs a
     staff user out mid-session and surfaces as a 200 with an
     error body, which is why it looks like a timeout.
-    → namespace all three
-    anchored via content-hash · source: code-review log
+    src/auth/session.go:147-153 (recorded at 142-148) · anchored, content hash  [4f2a]
+```
+
+That record was written about line 142 and answers for line 147, because the
+code moved and the anchor followed it. When it stops following, it says so:
+
+```console
+$ why src/auth/session.go
+
+  ● 2026-07-27 · code review, finding B5 · confidence 0.00
+    Never write shared session keys from this flow — namespace all three.
+    src/auth/session.go:142-148 (recorded; anchor lost) · ORPHANED — anchor lost, needs a human  [4f2a]
 ```
 
 The same record reaches your coding agent through a `PreToolUse` hook *before* it
@@ -93,10 +106,18 @@ A decision is *about code*, and code moves. Line 142 today is line 187 tomorrow
 and in a different file next week. **A record that loses its anchor is a diary
 entry. A record that keeps it is a control.**
 
-So anchoring is hybrid — line ranges *plus* a normalised content hash *plus* an
-AST path — with a confidence score that decays as the code drifts. When
-confidence drops far enough, the record is surfaced as **orphaned** rather than
-silently pointed at the wrong line.
+So anchoring is hybrid: line ranges *plus* a hash per significant line of the
+recorded span. Reformatting and reindentation change nothing. Code inserted above
+moves the record and costs it a little confidence. Rewriting the block itself is
+what makes confidence fall — content drives the score, not distance, because a
+block that moved 400 lines and still hashes identically is not less certainly the
+same block. When enough of it is gone, the record is surfaced as **orphaned** and
+claims no line number at all, rather than being silently pointed at the wrong one.
+
+The AST path from the design notes is not built. Per-line hashes already survive
+insertion, deletion, reindentation and whole-block moves; tree-sitter buys the
+remainder for the price of a CGo dependency, and waits until a real repo produces
+orphans the hashes can't explain.
 
 A tool that confidently points at the wrong line teaches you to distrust
 everything it says. Being loudly uncertain is a feature.
@@ -112,8 +133,8 @@ everything it says. Being loudly uncertain is a feature.
 
 | Phase | Scope |
 |---|---|
-| **0** | Claude Code `PreToolUse` hook → hand-written records → `why <file>:<line>` and `why log`. Exact line-range anchoring. |
-| **1** | Hybrid anchoring, confidence decay, orphan surfacing, and **backfill** from git history and existing ADR/review docs. |
+| **0** | ✅ Claude Code `PreToolUse` hook → records → `why <file>:<line>` and `why log`. |
+| **1** | ✅ Content-hash anchoring, confidence decay, orphan surfacing, `why add`, and backfill from `ponytail:` comments. Still open: backfill from git history and ADR/review docs, AST paths, capture, record signing. |
 | **2** | `why check` as a CI gate, comparing a diff against records. |
 | **3** | End-to-end encrypted team sync + dashboard: AI-authorship attribution, per-commit cost, violation history. |
 
@@ -132,9 +153,12 @@ default. Design commitments, not afterthoughts:
   content-addressed store it may already be replicated.
 - **The store is committed on purpose.** Records travel with the repo; a fresh
   clone has them, which is the whole point. Only the surfacing log
-  (`.whence/surfaced.jsonl`) is gitignored on `init` — it holds timestamps and
-  absolute local paths. Anyone using this alone who wants records kept local can
-  gitignore the store themselves; nothing in the tool reads git state.
+  (`.whence/surfaced.jsonl`) is gitignored — it holds timestamps and absolute
+  local paths — by a `.gitignore` written inside `.whence/` when the store is
+  created, so the decision stays in the directory it concerns instead of editing a
+  repo-level file the tool does not own. Anyone using this alone who wants records
+  kept local can gitignore the store themselves; nothing in the tool reads git
+  state.
 - **Records are data, never directives.** Feeding records into agent context
   makes the store a prompt-injection target, and records arrive by `git pull` —
   anyone able to land a commit could otherwise inject authoritative-looking

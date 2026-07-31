@@ -1,0 +1,118 @@
+[
+  {
+    "id": "2ab6",
+    "date": "2026-08-01",
+    "source": "ponytail comment",
+    "file": "anchor.go",
+    "line_start": 25,
+    "line_end": 27,
+    "decision": "per-line content hashes + a window scan, no AST.",
+    "why": "Add tree-sitter when a real repo produces orphans this cannot explain.",
+    "line_hashes": [
+      "69fab21f",
+      "5e813acc"
+    ]
+  },
+  {
+    "id": "e8b5",
+    "date": "2026-08-01",
+    "source": "ponytail comment",
+    "file": "anchor.go",
+    "line_start": 178,
+    "line_end": 182,
+    "decision": "O(file × span) scan, no index.",
+    "why": "A 3k-line file against a 10-line span is ~30k hash comparisons — microseconds, and it only runs on records that already failed both cheap checks. Revisit if capture ever starts anchoring records to spans hundreds of lines long.",
+    "line_hashes": [
+      "2fc8475f",
+      "3bf228f6",
+      "019074e0",
+      "70643365",
+      "3ca534e5"
+    ]
+  },
+  {
+    "id": "05a7",
+    "date": "2026-08-01",
+    "source": "ponytail comment",
+    "file": "author.go",
+    "line_start": 182,
+    "line_end": 186,
+    "decision": "4 hex chars, matching the #4f2a shape the README uses.",
+    "why": "~65k values, so a collision becomes likely around a few hundred records; nothing keys off the id yet, so a duplicate is cosmetic today. Widen when `why check` starts citing ids in CI output.",
+    "line_hashes": [
+      "ee863904",
+      "ddab4bf4",
+      "af5a78ef",
+      "40f2fc42",
+      "70ba6bed"
+    ]
+  },
+  {
+    "id": "9510",
+    "date": "2026-08-01",
+    "source": "ponytail comment",
+    "file": "author.go",
+    "line_start": 344,
+    "line_end": 348,
+    "decision": "comment syntax by prefix, not by parser.",
+    "why": "Covers //, # and block- comment continuations, which is every language in this repo. A note inside a language that comments some other way is simply not harvested — silent, but silent-and-absent rather than silent-and-wrong.",
+    "line_hashes": [
+      "e9db4526",
+      "2b4b811f",
+      "140556cb",
+      "5a41b7b0",
+      "8f71335d"
+    ]
+  },
+  {
+    "id": "e65c",
+    "date": "2026-08-01",
+    "source": "ponytail comment",
+    "file": "main.go",
+    "line_start": 143,
+    "line_end": 147,
+    "decision": "ranks live-anchors-then-newest and truncates.",
+    "why": "Real relevance ranking (does this record concern the lines actually being changed? has it been contradicted before?) needs the diff, which PreToolUse does not have. Revisit when `why check` exists in Phase 2.",
+    "line_hashes": [
+      "412f4587",
+      "224ba72e",
+      "703716ae",
+      "29466a5f",
+      "ae4bea10"
+    ]
+  },
+  {
+    "id": "1dd5",
+    "date": "2026-08-01",
+    "source": "ponytail comment",
+    "file": "main.go",
+    "line_start": 190,
+    "line_end": 194,
+    "decision": "this counts SURFACINGS, not caught contradictions, so it over-counts — most surfacings are purely informational.",
+    "why": "The DECISIONS §8 falsification number needs `why check` comparing a diff against records (Phase 2). Do not read this file as the falsification metric.",
+    "line_hashes": [
+      "69a63941",
+      "643ea1f1",
+      "ca69fa46",
+      "25600600",
+      "31c6eea7"
+    ]
+  },
+  {
+    "id": "58f2",
+    "date": "2026-08-01",
+    "source": "ponytail comment",
+    "file": "record.go",
+    "line_start": 82,
+    "line_end": 86,
+    "decision": "whole-file JSON read and a linear scan in Match.",
+    "why": "Fine at the ~20 hand-written records of Phase 0 (microseconds). Move to SQLite with an index on (file, line_start, line_end) once Phase 1 capture makes this thousands of records, because PreToolUse blocks every edit and latency becomes visible.",
+    "line_hashes": [
+      "70f94319",
+      "2c111973",
+      "48a25c61",
+      "85e75e55",
+      "b096c2b7"
+    ]
+  }
+]
