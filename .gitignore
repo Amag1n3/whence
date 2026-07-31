@@ -1,1 +1,4 @@
 .DS_Store
+
+# local telemetry — the records themselves ARE meant to be committed
+.whence/surfaced.jsonl
