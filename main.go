@@ -1,5 +1,9 @@
-// Command whence surfaces recorded decisions about code, to the terminal and to
-// AI coding agents, before that code is modified again.
+// Command why surfaces recorded decisions about code, to the terminal and to AI
+// coding agents, before that code is modified again.
+//
+// The project is called whence; the binary is `why` because `whence` is a zsh
+// and ksh builtin and shell builtins take precedence over $PATH. `why
+// src/auth.go:42` also reads better.
 //
 // Phase 0: records are written by hand. See "01 - Phase 0 Plan" in the vault
 // for why surfacing is built before capture.
@@ -16,15 +20,9 @@ import (
 	"time"
 )
 
-const (
-	storeDir    = ".whence"
-	recordsFile = "records.json"
-	surfacedLog = "surfaced.jsonl"
-
-	// Claude Code caps additionalContext at 10,000 characters. Stay under it
-	// with room for the preamble, and truncate loudly rather than silently.
-	maxContext = 8000
-)
+// Claude Code caps additionalContext at 10,000 characters. Stay under it with
+// room for the preamble, and truncate loudly rather than silently.
+const maxContext = 8000
 
 // contextPreamble is the prompt-injection mitigation from DECISIONS §7 made
 // literal. Anything able to write .whence/records.json can put text in front of
@@ -52,11 +50,13 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `whence — remember why your code is the way it is
+	fmt.Fprint(os.Stderr, `why — remember why your code is the way it is
 
-  whence <file>[:<line>]   show recorded decisions for a file, or one line
-  whence log               list every record
-  whence hook pre          (called by Claude Code; reads a hook payload on stdin)
+  why <file>[:<line>]   show recorded decisions for a file, or one line
+  why log               list every record in the nearest store
+  why hook pre          (called by Claude Code; reads a hook payload on stdin)
+
+Records live in .whence/records.json, found by walking up from the file.
 `)
 }
 
@@ -80,7 +80,7 @@ type hookOut struct {
 // about it into the agent's context.
 //
 // FAIL OPEN, ALWAYS. This runs synchronously before every single Edit and Write
-// in every session. A whence that is broken, misconfigured or slow must cost the
+// in every session. A why that is broken, misconfigured or slow must cost the
 // developer nothing beyond a missing record — so every error path here exits 0
 // having printed nothing, which Claude Code reads as "no opinion".
 func hookPre() {
@@ -96,11 +96,23 @@ func hookPre() {
 		os.Exit(0) // not a file-touching tool; nothing to say
 	}
 
-	rs, err := Load(filepath.Join(in.Cwd, storeDir, recordsFile))
+	// Hooks report absolute paths, but resolve defensively against the session
+	// cwd in case that ever changes.
+	abs := in.ToolInput.FilePath
+	if !filepath.IsAbs(abs) {
+		abs = filepath.Join(in.Cwd, abs)
+	}
+
+	// Resolve the store from the FILE, not the session. See FindStore.
+	store, root, ok := FindStore(abs)
+	if !ok {
+		os.Exit(0)
+	}
+	rs, err := Load(store)
 	if err != nil || len(rs) == 0 {
 		os.Exit(0)
 	}
-	hits := Match(rs, Rel(in.Cwd, in.ToolInput.FilePath), 0)
+	hits := Match(rs, Rel(root, abs), 0)
 	if len(hits) == 0 {
 		os.Exit(0)
 	}
@@ -111,7 +123,7 @@ func hookPre() {
 	if err := json.NewEncoder(os.Stdout).Encode(out); err != nil {
 		os.Exit(0)
 	}
-	appendSurfaced(in.Cwd, in.ToolInput.FilePath, hits)
+	appendSurfaced(root, abs, hits)
 }
 
 // renderContext formats records for an agent, under the 10k cap.
@@ -119,7 +131,7 @@ func hookPre() {
 // ponytail: ranks newest-first and truncates. Real relevance ranking (does this
 // record concern the lines actually being changed? has it been contradicted
 // before?) needs the diff, which PreToolUse does not have. Revisit when
-// `whence check` exists in Phase 2.
+// `why check` exists in Phase 2.
 func renderContext(rs []Record) string {
 	var b strings.Builder
 	b.WriteString(contextPreamble)
@@ -135,14 +147,15 @@ func renderContext(rs []Record) string {
 	return b.String()
 }
 
-// appendSurfaced logs that records were put in front of an agent.
+// appendSurfaced logs that records were put in front of an agent. It writes
+// into the store that produced them, not the session directory.
 //
 // ponytail: this counts SURFACINGS, not caught contradictions, so it
 // over-counts — most surfacings are purely informational. The DECISIONS §8
-// falsification number needs `whence check` comparing a diff against records
+// falsification number needs `why check` comparing a diff against records
 // (Phase 2). Do not read this file as the falsification metric.
-func appendSurfaced(cwd, file string, rs []Record) {
-	f, err := os.OpenFile(filepath.Join(cwd, storeDir, surfacedLog),
+func appendSurfaced(root, file string, rs []Record) {
+	f, err := os.OpenFile(filepath.Join(root, storeDirName, surfacedLogName),
 		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return // never break the hook over bookkeeping
@@ -164,17 +177,22 @@ func appendSurfaced(cwd, file string, rs []Record) {
 
 func query(target string) {
 	file, line := splitTarget(target)
-	cwd, err := os.Getwd()
+	abs, err := filepath.Abs(file)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "whence:", err)
+		fmt.Fprintln(os.Stderr, "why:", err)
 		os.Exit(1)
 	}
-	rs, err := Load(filepath.Join(cwd, storeDir, recordsFile))
+	store, root, ok := FindStore(abs)
+	if !ok {
+		fmt.Printf("no %s/%s found above %s\n", storeDirName, recordsFileName, file)
+		return
+	}
+	rs, err := Load(store)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "whence:", err)
+		fmt.Fprintln(os.Stderr, "why:", err)
 		os.Exit(1)
 	}
-	hits := Match(rs, Rel(cwd, file), line)
+	hits := Match(rs, Rel(root, abs), line)
 	if len(hits) == 0 {
 		fmt.Printf("no records for %s\n", target)
 		return
@@ -187,18 +205,25 @@ func query(target string) {
 func logAll() {
 	cwd, err := os.Getwd()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "whence:", err)
+		fmt.Fprintln(os.Stderr, "why:", err)
 		os.Exit(1)
 	}
-	rs, err := Load(filepath.Join(cwd, storeDir, recordsFile))
+	// Walk up from a sentinel inside cwd so FindStore checks cwd itself too.
+	store, _, ok := FindStore(filepath.Join(cwd, "x"))
+	if !ok {
+		fmt.Printf("no %s/%s found above %s\n", storeDirName, recordsFileName, cwd)
+		return
+	}
+	rs, err := Load(store)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "whence:", err)
+		fmt.Fprintln(os.Stderr, "why:", err)
 		os.Exit(1)
 	}
 	if len(rs) == 0 {
-		fmt.Printf("no records — create %s/%s\n", storeDir, recordsFile)
+		fmt.Println("store is empty:", store)
 		return
 	}
+	fmt.Println(store)
 	for _, r := range rs {
 		print1(r)
 	}

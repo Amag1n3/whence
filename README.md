@@ -4,12 +4,16 @@
 
 ---
 
-> [!WARNING]
-> **Status: design stage. Nothing is built yet.**
+> [!NOTE]
+> **Status: Phase 0 works. Records are written by hand.**
 >
-> This README is written first, on purpose — it's the design document and the
-> spec at the same time. Every command below describes intended behaviour, not
-> shipped behaviour. Don't `go install` this expecting it to work.
+> `why <file>:<line>` and the `PreToolUse` hook are real and tested. **Capture is
+> not built** — records live in `.whence/records.json` and you author them
+> yourself, deliberately: signal extraction is the hard problem, and hand-written
+> records are the spec for solving it.
+>
+> Anything below describing capture, content-hash anchoring, confidence decay or
+> `why check` is intended behaviour, not shipped behaviour.
 >
 > Started 2026-07-31.
 
@@ -39,7 +43,7 @@ about, and puts it back in front of the next agent before it edits.
 ## What it does
 
 ```console
-$ whence src/auth/session.go:142
+$ why src/auth/session.go:142
 
   ● 2026-07-27 · code-review · confidence 0.94
     Don't write shared session keys from this flow.
@@ -51,11 +55,11 @@ $ whence src/auth/session.go:142
     anchored via content-hash · source: code-review log
 ```
 
-The same record reaches your agent through MCP *before* it edits, so it doesn't
-reintroduce the bug. And in CI:
+The same record reaches your coding agent through a `PreToolUse` hook *before* it
+edits, so it doesn't reintroduce the bug. And in CI:
 
 ```console
-$ whence check --base origin/main
+$ why check --base origin/main
 
   ✗ src/auth/session.go:145
     writes localStorage["role"] — contradicts record #4f2a (2026-07-27)
@@ -73,11 +77,15 @@ That exit code is the product. Everything else is plumbing that leads to it.
    anything is written.
 2. **Anchor.** Binds each record to a file, a line range, a content hash and a
    tree-sitter AST path — so it survives reformatting, drift and most refactors.
-3. **Surface.** `whence <file>:<line>` from the terminal, an MCP server for the
-   agent, and `whence check` as a CI gate.
+3. **Surface.** `why <file>:<line>` from the terminal, the same records injected
+   into a coding agent's context before it edits, and `why check` as a CI gate.
 
-Records live in `.cairn`-style local storage at `.whence/` — SQLite, gitignored,
-never committed.
+Records live in `.whence/records.json`, found by walking up from the file the way
+git finds `.git` — so a session rooted in one repo still resolves records for a
+file edited in a sibling repo.
+
+> The project is **whence**; the binary is **`why`**. `whence` is a zsh and ksh
+> builtin, and builtins take precedence over `$PATH`.
 
 ### Anchoring is the hard part
 
@@ -104,9 +112,9 @@ everything it says. Being loudly uncertain is a feature.
 
 | Phase | Scope |
 |---|---|
-| **0** | Claude Code hook → local SQLite → `whence <file>:<line>` and `whence log`. Naive line-range anchoring. |
+| **0** | Claude Code `PreToolUse` hook → hand-written records → `why <file>:<line>` and `why log`. Exact line-range anchoring. |
 | **1** | Hybrid anchoring, confidence decay, orphan surfacing, and **backfill** from git history and existing ADR/review docs. |
-| **2** | MCP server feeding records into agent context. `whence check` CI gate. |
+| **2** | `why check` as a CI gate, comparing a diff against records. |
 | **3** | End-to-end encrypted team sync + dashboard: AI-authorship attribution, per-commit cost, violation history. |
 
 Phase 0 has to be useful on its own. Backfill in Phase 1 isn't polish — a

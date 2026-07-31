@@ -9,6 +9,12 @@ import (
 	"strings"
 )
 
+const (
+	storeDirName    = ".whence"
+	recordsFileName = "records.json"
+	surfacedLogName = "surfaced.jsonl"
+)
+
 // Record is one decision, anchored to a span of one file.
 //
 // Phase 0 anchors are hand-written and therefore exact: a repo-relative path
@@ -26,6 +32,30 @@ type Record struct {
 	End      int    `json:"line_end"`
 	Decision string `json:"decision"`
 	Why      string `json:"why"`
+}
+
+// FindStore walks up from a file looking for the nearest .whence/records.json,
+// the way git finds .git. It returns the store path and the directory holding
+// the .whence dir — the root that record paths are relative to.
+//
+// Stores are found by FILE, never by session. An agent working in one repo
+// routinely edits files in a sibling repo, and a hook's cwd is the session's
+// root rather than the edited file's repo. Resolving from cwd would search the
+// wrong repo, then compare an absolute path against repo-relative records, and
+// match nothing — silently, which is the worst way for this to fail.
+func FindStore(file string) (store, root string, ok bool) {
+	dir := filepath.Dir(file)
+	for {
+		cand := filepath.Join(dir, storeDirName, recordsFileName)
+		if st, err := os.Stat(cand); err == nil && !st.IsDir() {
+			return cand, dir, true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir { // hit the filesystem root
+			return "", "", false
+		}
+		dir = parent
+	}
 }
 
 // Load reads every record from path.
@@ -81,17 +111,17 @@ func samePath(a, b string) bool {
 	return filepath.ToSlash(filepath.Clean(a)) == filepath.ToSlash(filepath.Clean(b))
 }
 
-// Rel converts the absolute path a hook reports into the repo-relative form
-// records are written in.
+// Rel converts an absolute path into the repo-relative form records use, given
+// the root that FindStore reported.
 //
-// If the file sits outside cwd, Rel returns the input unchanged rather than a
-// "../.." path: a record can only be about a file in this repo, so an outside
-// path should simply fail to match anything.
-func Rel(cwd, abs string) string {
-	if cwd == "" || !filepath.IsAbs(abs) {
+// A file outside root comes back unchanged rather than as a "../.." path: a
+// record can only concern a file in its own repo, so an outside path should
+// simply fail to match.
+func Rel(root, abs string) string {
+	if root == "" || !filepath.IsAbs(abs) {
 		return abs
 	}
-	r, err := filepath.Rel(cwd, abs)
+	r, err := filepath.Rel(root, abs)
 	if err != nil || strings.HasPrefix(r, "..") {
 		return abs
 	}

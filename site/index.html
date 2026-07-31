@@ -155,7 +155,7 @@
     <h2>What it does</h2>
     <div class="term">
       <div class="term-bar"><i></i><i></i><i></i></div>
-<pre><span class="c-dim">$</span> whence src/auth/session.go:142
+<pre><span class="c-dim">$</span> why src/auth/session.go:142
 
   <span class="c-acc">●</span> <span class="c-mut">2026-07-27 · code-review · confidence 0.94</span>
     Don't write shared session keys from this flow.
@@ -166,12 +166,12 @@
     <span class="c-dim">anchored via content-hash · source: code-review log</span></pre>
     </div>
     <p>
-      The same record reaches your agent through MCP <strong>before</strong> it
-      edits, so the fix doesn't get undone. And it holds the line in CI:
+      The same record reaches your coding agent <strong>before</strong> it edits,
+      through a hook, so the fix doesn't get undone. And it holds the line in CI:
     </p>
     <div class="term">
       <div class="term-bar"><i></i><i></i><i></i></div>
-<pre><span class="c-dim">$</span> whence check --base origin/main
+<pre><span class="c-dim">$</span> why check --base origin/main
 
   <span class="c-warn">✗</span> src/auth/session.go:145
     writes localStorage["role"] — contradicts record #4f2a

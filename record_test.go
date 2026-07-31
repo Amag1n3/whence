@@ -1,15 +1,16 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// The non-trivial logic in Phase 0 is line-range overlap and path
-// normalisation. If either breaks, whence silently shows the wrong records or
-// none at all — which is worse than showing nothing, because it trains you to
-// distrust the tool. So both get a check.
+// The non-trivial logic in Phase 0 is store resolution, line-range overlap and
+// path normalisation. If any of them breaks, why silently shows the wrong
+// records or none at all — which is worse than showing nothing, because it
+// trains you to distrust the tool. So all three get checks.
 
 var fixture = []Record{
 	{ID: "b5", Date: "2026-07-27", File: "src/auth/session.go", Start: 140, End: 150,
@@ -19,6 +20,74 @@ var fixture = []Record{
 	{ID: "other", Date: "2026-07-28", File: "src/http/router.go", Start: 10, End: 20,
 		Decision: "unrelated file", Source: "commit"},
 }
+
+// --- store resolution ---------------------------------------------------
+
+// Regression test for the real bug: a session rooted in one repo editing a file
+// in a sibling repo resolved the store from the session's cwd, found the wrong
+// repo (or none), then compared an absolute path against repo-relative records
+// and matched nothing — silently.
+func TestFindStoreResolvesByFileNotSession(t *testing.T) {
+	tmp := t.TempDir()
+	back := filepath.Join(tmp, "backend")
+	front := filepath.Join(tmp, "frontend")
+	for _, r := range []string{back, front} {
+		mkStore(t, r)
+	}
+
+	// A frontend file must resolve to the FRONTEND store, no matter which repo
+	// the session happens to be rooted in.
+	store, root, ok := FindStore(filepath.Join(front, "src", "a.js"))
+	if !ok {
+		t.Fatal("should have found the frontend store")
+	}
+	if root != front {
+		t.Errorf("root = %q, want %q", root, front)
+	}
+	if want := filepath.Join(front, storeDirName, recordsFileName); store != want {
+		t.Errorf("store = %q, want %q", store, want)
+	}
+
+	// And the backend file resolves to its own, not the frontend's.
+	if _, root, ok := FindStore(filepath.Join(back, "src", "a.js")); !ok || root != back {
+		t.Errorf("backend file should resolve to backend store, got root=%q ok=%v", root, ok)
+	}
+}
+
+func TestFindStoreWalksUpFromNested(t *testing.T) {
+	tmp := t.TempDir()
+	mkStore(t, tmp)
+	deep := filepath.Join(tmp, "a", "b", "c")
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, root, ok := FindStore(filepath.Join(deep, "f.go")); !ok || root != tmp {
+		t.Errorf("should walk up to %q, got root=%q ok=%v", tmp, root, ok)
+	}
+}
+
+func TestFindStoreAbsentTerminates(t *testing.T) {
+	// No store anywhere: must report false rather than loop to the root forever.
+	if _, _, ok := FindStore(filepath.Join(t.TempDir(), "f.go")); ok {
+		t.Error("expected ok=false when no store exists")
+	}
+}
+
+func mkStore(t *testing.T, root string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(root, storeDirName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(root, storeDirName, recordsFileName)
+	if err := os.WriteFile(p, []byte("[]"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// --- matching -----------------------------------------------------------
 
 func TestMatchWholeFile(t *testing.T) {
 	got := Match(fixture, "src/auth/session.go", 0)
@@ -33,18 +102,16 @@ func TestMatchWholeFile(t *testing.T) {
 
 func TestMatchLineWithinSpan(t *testing.T) {
 	// 145 falls inside b5's 140-150 and is exactly old's single-line span.
-	got := Match(fixture, "src/auth/session.go", 145)
-	if len(got) != 2 {
+	if got := Match(fixture, "src/auth/session.go", 145); len(got) != 2 {
 		t.Fatalf("line 145 should match both overlapping records: got %d, want 2", len(got))
 	}
 }
 
 func TestMatchLineOutsideSpan(t *testing.T) {
-	// 200 is past the end of every span on that file.
 	if got := Match(fixture, "src/auth/session.go", 200); len(got) != 0 {
 		t.Errorf("line 200 is outside every span, got %d records", len(got))
 	}
-	// Boundaries are inclusive: 140 and 150 are both inside b5.
+	// Boundaries are inclusive.
 	if got := Match(fixture, "src/auth/session.go", 140); len(got) != 1 {
 		t.Errorf("span start should be inclusive, got %d", len(got))
 	}
@@ -71,20 +138,21 @@ func TestSamePathTolerance(t *testing.T) {
 }
 
 func TestRel(t *testing.T) {
-	cwd := filepath.FromSlash("/repo")
-	if got := Rel(cwd, filepath.FromSlash("/repo/src/a.go")); filepath.ToSlash(got) != "src/a.go" {
-		t.Errorf("Rel should relativise inside cwd, got %q", got)
+	root := filepath.FromSlash("/repo")
+	if got := Rel(root, filepath.FromSlash("/repo/src/a.go")); filepath.ToSlash(got) != "src/a.go" {
+		t.Errorf("Rel should relativise inside root, got %q", got)
 	}
-	// Outside cwd: returned unchanged, never as "../..", so it matches nothing.
+	// Outside root: returned unchanged, never as "../..", so it matches nothing.
 	outside := filepath.FromSlash("/elsewhere/b.go")
-	if got := Rel(cwd, outside); got != outside {
+	if got := Rel(root, outside); got != outside {
 		t.Errorf("Rel should leave outside paths alone, got %q", got)
 	}
-	// Already relative: unchanged.
-	if got := Rel(cwd, "src/a.go"); got != "src/a.go" {
+	if got := Rel(root, "src/a.go"); got != "src/a.go" {
 		t.Errorf("Rel should leave relative paths alone, got %q", got)
 	}
 }
+
+// --- rendering ----------------------------------------------------------
 
 func TestRenderContextIsFramedAsData(t *testing.T) {
 	// The preamble is the prompt-injection mitigation. If it ever goes missing,
