@@ -9,8 +9,9 @@
 >
 > Real and tested: `why <file>:<line>`, the `PreToolUse` hook, content-hash
 > anchoring with drifted / weak / orphaned states, evidence pointers that anchor
-> and rot independently of the record, `why check` as a CI gate, `why add`,
-> `why rm`, and `why backfill` — which harvests decisions already
+> and rot independently of the record, `why check` as a CI gate, human-vs-agent
+> authorship with a confirmation step, a committed retraction log, `why add`,
+> `why rm`, `why confirm`, and `why backfill` — which harvests decisions already
 > written down as `ponytail:` comments, so a store is non-empty without anyone
 > retyping anything.
 >
@@ -186,6 +187,37 @@ orphans the hashes can't explain.
 
 A tool that confidently points at the wrong line teaches you to distrust
 everything it says. Being loudly uncertain is a feature.
+
+## Records an agent wrote are not trusted until a human says so
+
+A human writing a record is one deliberate act of attention. An agent writing one
+is zero. So agent-authored records are marked, and stay marked until somebody
+confirms them — including in the block injected into the next agent's context:
+
+```
+  anchor: anchored, exact range · confidence 1.00
+  source: capture
+  UNCHECKED — an agent wrote this and no human has confirmed it
+```
+
+Wikipedia's rule is that content must be *verifiable*, with no requirement that
+anyone verified it when it went in. That gap is what circular citation exploits.
+This closes it for the only records that have it.
+
+`why log` ends with the number that matters:
+
+```
+9 records · 9 human, 0 agent · 0 unchecked · 0 orphaned
+```
+
+Self-feeding stores degrade, and the rare cases go first — which here are exactly
+the records that justify the tool. A share trending toward agent-written and
+unchecked is the warning, and it shows up long before the damage.
+
+`why rm` writes to a committed `.whence/retracted.jsonl` rather than deleting
+quietly, because a store full of confident nonsense produces *more* CI hits, not
+fewer. The count of times a record turned out to be wrong is the only number that
+sees that failure.
 
 ## What this is not
 

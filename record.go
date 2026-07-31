@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	storeDirName    = ".whence"
-	recordsFileName = "records.json"
-	surfacedLogName = "surfaced.jsonl"
+	storeDirName     = ".whence"
+	recordsFileName  = "records.json"
+	surfacedLogName  = "surfaced.jsonl"
+	retractedLogName = "retracted.jsonl"
 )
 
 // Record is one decision, anchored to a span of one file.

@@ -67,6 +67,73 @@ func addCmd(args []string) {
 	print1(rec)
 }
 
+func author(asAgent bool) string {
+	if asAgent {
+		return authorAgent
+	}
+	return authorHuman
+}
+
+// confirmCmd records that a human has read an agent-written record and stands
+// behind it.
+//
+// This is the whole human-attention budget of the design, and it is deliberately
+// one command on one record. §17.7's warning applies: a gate hit too often gets
+// rubber-stamped, and a rubber-stamped gate is worse than none because it
+// launders unchecked claims as checked ones. If this ever feels like a chore,
+// capture is writing too much — fix that end, not this one.
+func confirmCmd(args []string) {
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: why confirm <id>")
+		os.Exit(2)
+	}
+	store, root, rs := openStore()
+
+	for i := range rs {
+		if rs[i].ID != args[0] {
+			continue
+		}
+		if rs[i].Verified != "" {
+			fmt.Printf("[%s] was already confirmed on %s\n", rs[i].ID, rs[i].Verified)
+			return
+		}
+		rs[i].Verified = time.Now().Format("2006-01-02")
+		if err := save(store, rs); err != nil {
+			fmt.Fprintln(os.Stderr, "why:", err)
+			os.Exit(1)
+		}
+		fmt.Printf("confirmed [%s]\n", rs[i].ID)
+		print1(Resolved{
+			Record:  rs[i],
+			Anchor:  resolveAnchor(fileLines(filepath.Join(root, rs[i].File)), rs[i]),
+			Grounds: resolveEvidence(root, rs[i]),
+		})
+		return
+	}
+	fmt.Fprintf(os.Stderr, "why: no record [%s] in %s\n", args[0], store)
+	os.Exit(1)
+}
+
+// openStore finds the store from the working directory and loads it, or exits.
+func openStore() (store, root string, rs []Record) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "why:", err)
+		os.Exit(1)
+	}
+	store, root, ok := FindStore(filepath.Join(cwd, "x"))
+	if !ok {
+		fmt.Fprintf(os.Stderr, "no %s/%s found above %s\n", storeDirName, recordsFileName, cwd)
+		os.Exit(1)
+	}
+	rs, err = Load(store)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "why:", err)
+		os.Exit(1)
+	}
+	return store, root, rs
+}
+
 // multiFlag is a flag that may be given more than once.
 type multiFlag []string
 
@@ -309,46 +376,70 @@ func splitSpan(s string) (file string, start, end int) {
 //
 // No confirmation prompt: the store is committed, so `git checkout` is the undo,
 // and it is a better one than anything this could offer.
+//
+// Every removal is logged to .whence/retracted.jsonl, which is committed like the
+// store itself. That log is the second instrument DECISIONS §17.6 argues for.
+// §8's falsification number counts times whence caught a contradiction — and a
+// store full of confident nonsense produces MORE catches, so that number rises
+// while the tool rots. The only way to see the rot is to count how often a record
+// turned out to be wrong, which means a deletion cannot be silent.
 func rmCmd(args []string) {
-	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, "usage: why rm <id>")
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		fmt.Fprintln(os.Stderr, `usage: why rm <id> [-w "why it was wrong"]`)
 		os.Exit(2)
 	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "why:", err)
-		os.Exit(1)
+	id := args[0]
+	fl := flag.NewFlagSet("rm", flag.ExitOnError)
+	reason := fl.String("w", "", "why this record is being retracted")
+	if err := fl.Parse(args[1:]); err != nil {
+		os.Exit(2)
 	}
-	store, _, ok := FindStore(filepath.Join(cwd, "x"))
-	if !ok {
-		fmt.Fprintf(os.Stderr, "no %s/%s found above %s\n", storeDirName, recordsFileName, cwd)
-		os.Exit(1)
-	}
-	rs, err := Load(store)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "why:", err)
-		os.Exit(1)
-	}
+
+	store, root, rs := openStore()
 
 	kept := make([]Record, 0, len(rs))
 	var gone *Record
 	for i, r := range rs {
-		if r.ID == args[0] {
+		if r.ID == id {
 			gone = &rs[i]
 			continue
 		}
 		kept = append(kept, r)
 	}
 	if gone == nil {
-		fmt.Fprintf(os.Stderr, "why: no record [%s] in %s\n", args[0], store)
+		fmt.Fprintf(os.Stderr, "why: no record [%s] in %s\n", id, store)
 		os.Exit(1)
 	}
 	if err := save(store, kept); err != nil {
 		fmt.Fprintln(os.Stderr, "why:", err)
 		os.Exit(1)
 	}
+	appendRetracted(root, *gone, *reason)
 	fmt.Printf("removed [%s] %s:%d-%d — %s\n",
 		gone.ID, gone.File, gone.Start, gone.End, gone.Decision)
+	if *reason == "" {
+		fmt.Println("no reason given. `-w \"...\"` next time — the retraction log is how you find out how often this tool is wrong.")
+	}
+}
+
+// appendRetracted logs a removal. Committed, unlike the surfacing log, because
+// this one is evidence about the store's own accuracy and is worthless if it only
+// exists on the machine that happened to do the deleting.
+func appendRetracted(root string, r Record, reason string) {
+	f, err := os.OpenFile(filepath.Join(root, storeDirName, retractedLogName),
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return // never fail a removal over bookkeeping
+	}
+	defer f.Close()
+	_ = json.NewEncoder(f).Encode(map[string]any{
+		"at":       time.Now().Format("2006-01-02"),
+		"id":       r.ID,
+		"file":     r.File,
+		"decision": r.Decision,
+		"author":   r.Author,
+		"reason":   reason,
+	})
 }
 
 // --- backfill -----------------------------------------------------------

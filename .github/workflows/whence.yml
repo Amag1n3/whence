@@ -1,0 +1,38 @@
+name: whence
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - run: gofmt -l . | tee /dev/stderr | (! read)
+        name: gofmt (fails if anything is unformatted)
+      - run: go vet ./...
+      - run: go test ./...
+
+  check:
+    # The gate on itself. whence's own decisions live in .whence/records.json, so
+    # this repo is the first place the CI story has to hold up.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # fetch-depth: 0 is not optional. `why check` diffs against a base ref
+          # and reads the base revision of both the store and the cited files;
+          # a shallow clone has neither, and check would pass by finding nothing.
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - run: go build -o why .
+      - name: recorded decisions covering this diff
+        run: ./why check -base origin/${{ github.base_ref }}

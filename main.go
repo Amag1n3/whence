@@ -50,6 +50,8 @@ func main() {
 		checkCmd(os.Args[2:])
 	case "rm":
 		rmCmd(os.Args[2:])
+	case "confirm":
+		confirmCmd(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -68,7 +70,8 @@ func usage() {
                         file:line (anchored, so its rot is detectable), a
                         command, a commit, a link. Never another record.
   why backfill [dir]    harvest ponytail: comments already in the code
-  why rm <id>           delete one record
+  why rm <id> [-w why]  retract one record, logging why it was wrong
+  why confirm <id>      record that a human has checked an agent-written record
   why check [-base rev] report the records covering a diff; exit 1 if any
   why hook pre          (called by Claude Code; reads a hook payload on stdin)
 
@@ -166,6 +169,9 @@ func renderContext(rs []Resolved) string {
 		for _, g := range r.Grounds {
 			line += fmt.Sprintf("  evidence: %s\n", ground(g))
 		}
+		if t := trust(r.Record); t != "" {
+			line += fmt.Sprintf(" %s\n", strings.TrimPrefix(t, " · "))
+		}
 		if b.Len()+len(line) > maxContext {
 			fmt.Fprintf(&b, "- (%d more record(s) omitted: context cap)\n", len(rs)-i)
 			break
@@ -198,6 +204,19 @@ func confidence(r Resolved) string {
 		return ""
 	}
 	return fmt.Sprintf(" · confidence %.2f", r.Anchor.Confidence)
+}
+
+// trust renders how much human attention a record has had, and nothing at all
+// when the answer is the normal amount.
+//
+// Only agent-written records can be unchecked, so silence here means "a human
+// wrote this on purpose". Saying so on every human record would be noise, and
+// noise is how a warning stops being read.
+func trust(r Record) string {
+	if !r.unchecked() {
+		return ""
+	}
+	return " · UNCHECKED — an agent wrote this and no human has confirmed it"
 }
 
 // ground renders one piece of evidence and what has become of it.
@@ -302,17 +321,36 @@ func logAll() {
 	// A record per file here, so one read each rather than Match's one read per
 	// file. `why log` is a human typing at a terminal; the hook is the path that
 	// has to be fast.
+	orphans, byAgent, unchecked := 0, 0, 0
 	for _, r := range rs {
-		print1(Resolved{
+		res := Resolved{
 			Record:  r,
 			Anchor:  resolveAnchor(fileLines(filepath.Join(root, r.File)), r),
 			Grounds: resolveEvidence(root, r),
-		})
+		}
+		print1(res)
+		if res.Anchor.State == StateOrphaned {
+			orphans++
+		}
+		if r.Author == authorAgent {
+			byAgent++
+		}
+		if r.unchecked() {
+			unchecked++
+		}
 	}
+
+	// The human-authored share, printed every time, because it is the leading
+	// indicator for DECISIONS §17 and it is otherwise invisible. Self-feeding
+	// stores degrade, and the rare cases go first — which for this tool are
+	// exactly the records that justify it. A number trending toward agent-written
+	// and unchecked is the warning, and it arrives long before the damage does.
+	fmt.Printf("\n%d records · %d human, %d agent · %d unchecked · %d orphaned\n",
+		len(rs), len(rs)-byAgent, byAgent, unchecked, orphans)
 }
 
 func print1(r Resolved) {
-	fmt.Printf("\n  ● %s · %s%s\n", r.Date, r.Source, confidence(r))
+	fmt.Printf("\n  ● %s · %s%s%s\n", r.Date, r.Source, confidence(r), trust(r.Record))
 	fmt.Printf("    %s\n", r.Decision)
 	if r.Why != "" { // backfilled one-sentence notes have no separate why
 		for _, l := range strings.Split(r.Why, "\n") {

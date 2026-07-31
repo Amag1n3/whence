@@ -39,7 +39,7 @@ func TestAddRoundTripsToAnExactAnchor(t *testing.T) {
 	chdir(t, dir)
 	writeFile(t, dir, "session.go", block)
 
-	got, store, err := add("session.go", 2, 4, "namespace session keys", "the staff dashboard reads them", "manual", nil)
+	got, store, err := add("session.go", 2, 4, "namespace session keys", "the staff dashboard reads them", "manual", authorHuman, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,10 +71,10 @@ func TestAddRefusesASpanItCannotAnchor(t *testing.T) {
 	chdir(t, dir)
 	writeFile(t, dir, "session.go", block)
 
-	if _, _, err := add("session.go", 2, 900, "past the end", "", "manual", nil); err == nil {
+	if _, _, err := add("session.go", 2, 900, "past the end", "", "manual", authorHuman, nil); err == nil {
 		t.Error("a range past the end of the file must be refused, not anchored to nothing")
 	}
-	if _, _, err := add("nope.go", 1, 2, "no such file", "", "manual", nil); err == nil {
+	if _, _, err := add("nope.go", 1, 2, "no such file", "", "manual", authorHuman, nil); err == nil {
 		t.Error("an unreadable file must be refused")
 	}
 }
@@ -200,7 +200,7 @@ func TestEvidencePointingAtCodeGetsItsOwnAnchor(t *testing.T) {
 	})
 
 	got, store, err := add("session.go", 2, 4, "namespace session keys",
-		"the dashboard reads them", "code review", []string{"dashboard.go:2-3"})
+		"the dashboard reads them", "code review", authorHuman, []string{"dashboard.go:2-3"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +243,7 @@ func TestEvidenceCannotCiteTheRecordStore(t *testing.T) {
 	writeFile(t, dir, "session.go", block)
 
 	for _, ref := range []string{".whence/records.json", ".whence/records.json:4-9"} {
-		if _, _, err := add("session.go", 2, 4, "circular", "", "manual", []string{ref}); err == nil {
+		if _, _, err := add("session.go", 2, 4, "circular", "", "manual", authorHuman, []string{ref}); err == nil {
 			t.Errorf("evidence %q cites the store and must be refused", ref)
 		}
 	}
@@ -257,7 +257,7 @@ func TestEvidenceThatIsNotCodeIsKeptVerbatim(t *testing.T) {
 	writeFile(t, dir, "session.go", block)
 
 	refs := []string{"go test ./...", "9f2a1c3", "https://github.com/x/y/pull/42"}
-	got, _, err := add("session.go", 2, 4, "several kinds of grounds", "", "manual", refs)
+	got, _, err := add("session.go", 2, 4, "several kinds of grounds", "", "manual", authorHuman, refs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,10 +281,112 @@ func TestEvidenceRefusesABrokenFileReference(t *testing.T) {
 	chdir(t, dir)
 	writeFile(t, dir, "session.go", block)
 
-	if _, _, err := add("session.go", 2, 4, "typo", "", "manual", []string{"dashbord.go:2-3"}); err == nil {
+	if _, _, err := add("session.go", 2, 4, "typo", "", "manual", authorHuman, []string{"dashbord.go:2-3"}); err == nil {
 		t.Error("a file:line pointer at a file that does not exist must be refused")
 	}
-	if _, _, err := add("session.go", 2, 4, "past end", "", "manual", []string{"session.go:400-410"}); err == nil {
+	if _, _, err := add("session.go", 2, 4, "past end", "", "manual", authorHuman, []string{"session.go:400-410"}); err == nil {
 		t.Error("a file:line pointer past the end of the file must be refused")
+	}
+}
+
+// --- who wrote it, and has anyone checked ------------------------------
+
+// A human writing a record IS the confirmation; an agent's record waits for one.
+// That asymmetry is the whole point of tracking the author, so it gets a test.
+func TestAgentRecordsStartUncheckedAndHumanOnesDoNot(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	writeFile(t, dir, "session.go", block)
+
+	human, _, err := add("session.go", 2, 4, "a human wrote this", "", "manual", authorHuman, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if human.unchecked() {
+		t.Error("writing a record by hand is itself the confirmation")
+	}
+	if human.Verified == "" {
+		t.Error("a human record should be stamped confirmed at birth")
+	}
+	if trust(human.Record) != "" {
+		t.Errorf("a human record needs no warning, got %q", trust(human.Record))
+	}
+
+	agent, _, err := add("session.go", 2, 4, "an agent wrote this", "", "capture", authorAgent, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !agent.unchecked() {
+		t.Error("an agent's record has had no human attention and must say so")
+	}
+	if agent.Verified != "" {
+		t.Error("an agent record must not confirm itself")
+	}
+	if !strings.Contains(trust(agent.Record), "UNCHECKED") {
+		t.Errorf("an agent record must be flagged, got %q", trust(agent.Record))
+	}
+}
+
+// Records written before the author field existed have no author. They were all
+// written by a human by hand, so they must not suddenly read as unchecked.
+func TestRecordsPredatingTheAuthorFieldAreNotFlagged(t *testing.T) {
+	old := Record{ID: "old", File: "a.go", Start: 1, End: 2, Decision: "from before"}
+	if old.unchecked() {
+		t.Error("an empty author means human, and must not read as unchecked")
+	}
+}
+
+// Deleting a record silently makes it impossible to ever answer "how often is
+// this tool wrong?" — which is the hole §8's counter cannot see (DECISIONS §17.6).
+func TestRemovingARecordLeavesATrace(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	writeFile(t, dir, "session.go", block)
+
+	rec, store, err := add("session.go", 2, 4, "wrong on purpose", "", "manual", authorHuman, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rmCmd([]string{rec.ID, "-w", "the dashboard never read those keys"})
+
+	rs, err := Load(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rs) != 0 {
+		t.Fatalf("record should be gone from the store, %d left", len(rs))
+	}
+
+	log, err := os.ReadFile(filepath.Join(dir, storeDirName, retractedLogName))
+	if err != nil {
+		t.Fatalf("a retraction must be logged: %v", err)
+	}
+	for _, want := range []string{rec.ID, "wrong on purpose", "the dashboard never read those keys"} {
+		if !strings.Contains(string(log), want) {
+			t.Errorf("retraction log missing %q, got %s", want, log)
+		}
+	}
+}
+
+func TestConfirmMarksAnAgentRecordChecked(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	writeFile(t, dir, "session.go", block)
+
+	rec, store, err := add("session.go", 2, 4, "needs a human", "", "capture", authorAgent, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	confirmCmd([]string{rec.ID})
+
+	rs, err := Load(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rs) != 1 || rs[0].Verified == "" {
+		t.Fatalf("confirm should stamp a date, got %+v", rs)
+	}
+	if rs[0].unchecked() {
+		t.Error("a confirmed record is no longer unchecked")
 	}
 }
