@@ -178,7 +178,7 @@ const LEDGER = [
   {
     on: true,
     t: 'The PreToolUse hook',
-    d: 'Records reach Claude Code before it edits, in 6ms. Fails open — a broken why costs you nothing but a missing record.',
+    d: 'Records reach Claude Code before it edits, in 6ms. Fails open — a broken whence costs you nothing but a missing record.',
   },
   {
     on: true,
@@ -187,7 +187,7 @@ const LEDGER = [
   },
   {
     on: true,
-    t: 'why check',
+    t: 'whence check',
     d: 'The CI gate. Reports the decisions covering a diff, and the ones the diff just severed. Exit 1.',
   },
   {
@@ -197,7 +197,7 @@ const LEDGER = [
   },
   {
     on: true,
-    t: 'why backfill',
+    t: 'whence backfill',
     d: 'Harvests decisions already written in your code as ponytail: comments, so day one is not an empty store.',
   },
   {
@@ -462,12 +462,17 @@ export default function App() {
                   Build the binary
                 </h3>
                 <Code>{`git clone https://github.com/Amag1n3/whence
-cd whence && go build -o why .`}</Code>
+cd whence && go build -o whence .
+
+# zsh and ksh only — both shadow it with a builtin
+echo "alias whence='command whence'" >> ~/.zshrc`}</Code>
                 <p className="mt-3 max-w-[56ch] text-[14.5px] leading-[1.65] text-muted-foreground">
-                  The project is <b className="text-silt">whence</b>; the binary is{' '}
-                  <code className="font-mono text-silt">why</code>, because{' '}
-                  <code className="font-mono text-silt">whence</code> is a zsh and ksh
-                  builtin and builtins beat <code className="font-mono">$PATH</code>.
+                  <b className="text-silt">whence</b> everywhere — the project, the repo,
+                  the binary. zsh and ksh are the one exception: both ship a{' '}
+                  <code className="font-mono text-silt">whence</code> builtin that beats{' '}
+                  <code className="font-mono">$PATH</code>, and an alias is resolved before
+                  a builtin, so that one line is the whole fix. bash, fish and every hook
+                  or CI job need nothing.
                 </p>
               </Reveal>
 
@@ -476,7 +481,7 @@ cd whence && go build -o why .`}</Code>
                   <span className="mr-2.5 font-mono text-[11.5px] text-dim">02</span>
                   Record a decision
                 </h3>
-                <Code>{`why add src/auth/session.go:142-148 \\
+                <Code>{`whence add src/auth/session.go:142-148 \\
   -d "Namespace all three session keys to CHECKOUT_*." \\
   -w "The admin dashboard reads them on the same origin." \\
   -e dashboard/Header.tsx:88-94`}</Code>
@@ -494,8 +499,8 @@ cd whence && go build -o why .`}</Code>
                   <span className="mr-2.5 font-mono text-[11.5px] text-dim">03</span>
                   Read it back
                 </h3>
-                <Code>{`why src/auth/session.go:145   # one line
-why log                       # everything in the nearest store`}</Code>
+                <Code>{`whence src/auth/session.go:145   # one line
+whence log                       # everything in the nearest store`}</Code>
               </Reveal>
 
               <Reveal delay={0.15}>
@@ -508,7 +513,7 @@ why log                       # everything in the nearest store`}</Code>
     "PreToolUse": [
       {
         "matcher": "Edit|Write",
-        "hooks": [{ "type": "command", "command": "why hook pre" }]
+        "hooks": [{ "type": "command", "command": "/abs/path/to/whence hook pre" }]
       }
     ]
   }
@@ -568,7 +573,7 @@ why log                       # everything in the nearest store`}</Code>
                     <div className="space-y-4 border-t border-white/[0.08] pt-6 text-[14.5px] leading-[1.68] text-muted-foreground lg:border-t-0 lg:pt-1">
                       <p>
                         Agreed before a line of code existed.{' '}
-                        <code className="font-mono">why check</code> is what makes it
+                        <code className="font-mono">whence check</code> is what makes it
                         measurable, and it now runs. The surfacing log counts how often
                         records were shown, which over-counts badly, and is deliberately not
                         reported as the number above.

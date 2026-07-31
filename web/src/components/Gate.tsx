@@ -51,7 +51,7 @@ export function Gate() {
         {/* the command, and the only number that matters, on one line */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-white/[0.07] px-5 py-3">
           <span className="font-mono text-[12.5px] text-silt/85">
-            <span className="text-ochre/70">$ </span>why check --base origin/main
+            <span className="text-ochre/70">$ </span>whence check --base origin/main
           </span>
           <span className="ml-auto rounded-full border border-cinnabar/40 bg-cinnabar/[0.09] px-2.5 py-0.5 font-mono text-[11px] tracking-wide text-cinnabar">
             exit 1

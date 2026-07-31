@@ -3,6 +3,9 @@
 # local telemetry — the records themselves ARE meant to be committed
 .whence/surfaced.jsonl
 
+# the binary, built in place by the README's install step
+/whence
+
 # site build
 web/node_modules/
 web/dist/
