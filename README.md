@@ -8,15 +8,17 @@
 > **Status: surfacing and anchoring work. Capture does not.**
 >
 > Real and tested: `why <file>:<line>`, the `PreToolUse` hook, content-hash
-> anchoring with drifted / weak / orphaned states, `why add`, and `why backfill`
-> — which harvests decisions already written down as `ponytail:` comments, so a
-> store is non-empty without anyone retyping anything.
+> anchoring with drifted / weak / orphaned states, evidence pointers that anchor
+> and rot independently of the record, `why check` as a CI gate, `why add`,
+> `why rm`, and `why backfill` — which harvests decisions already
+> written down as `ponytail:` comments, so a store is non-empty without anyone
+> retyping anything.
 >
 > **Capture is not built.** Records are authored deliberately, because signal
 > extraction is the hard problem and curated records are the spec for solving it.
 >
-> Anything below describing capture, AST-path anchoring, record signing or
-> `why check` is intended behaviour, not shipped behaviour.
+> Anything below describing capture, AST-path anchoring or record signing is
+> intended behaviour, not shipped behaviour.
 >
 > Started 2026-07-31.
 
@@ -74,14 +76,31 @@ edits, so it doesn't reintroduce the bug. And in CI:
 ```console
 $ why check --base origin/main
 
-  ✗ src/auth/session.go:145
-    writes localStorage["role"] — contradicts record #4f2a (2026-07-27)
-    "namespace all three keys"
+  ! src/auth/session.go:145 — touches record [4f2a] (2026-07-27)
+    Never write shared session keys from this flow — namespace all three.
+    why: "userToken", "userId" and "role" are all read by the admin dashboard.
+    src/auth/session.go:142-148 · anchored, exact range
 
-  1 violation. exit 1
+  ✗ src/auth/session.go — record [9c1b] lost its anchor in this change
+    it anchored at 88-94 before this diff; nothing matches now
+    the decision is still on record; the code it described is gone.
+    re-anchor it with `why add`, or delete it deliberately.
+
+  2 record(s) to confirm. exit 1
 ```
 
 That exit code is the product. Everything else is plumbing that leads to it.
+
+**`check` reports coverage, never verdicts.** It says *these lines are governed by
+these decisions, go and confirm* — it does not decide that your change is wrong.
+Judging a diff is code review, that category is well served, and a tool that
+starts doing it has lost the thing that makes it different. The second finding
+above is the one no reviewer would catch unaided: the change didn't contradict
+anything, it severed a decision from the code it described.
+
+A record introduced by the same diff is not reported. Otherwise every pull
+request that records a decision fails its own gate, which is how a team learns to
+switch the gate off.
 
 ## How it works
 
@@ -114,6 +133,52 @@ block that moved 400 lines and still hashes identically is not less certainly th
 same block. When enough of it is gone, the record is surfaced as **orphaned** and
 claims no line number at all, rather than being silently pointed at the wrong one.
 
+### Evidence: what someone else could check
+
+A record mixes two very different kinds of claim. *"These three keys are read by
+the staff dashboard"* can be checked by going and looking. *"Which looks like a
+network problem and is not one"* cannot — it's a judgement. Left in one paragraph,
+the judgement borrows credibility from the fact sitting next to it.
+
+So a record can carry **evidence**: pointers to things checkable without consulting
+another record.
+
+```console
+$ why add session.go:2-4 -d "Namespace all three session keys to CHECKOUT_*." \
+    -w "The staff dashboard reads them on the same origin." \
+    -e dashboard.go:2-3 -e "go test ./auth/..."
+```
+
+A pointer at code gets **its own anchor**, which is the reason evidence is a
+pointer and never a copied snippet — a copy goes stale silently, which is the
+disease. So when the cited code is deleted, whence says so on its own:
+
+```console
+$ why check --base origin/main
+
+  ✗ dashboard.go:2-3 — this change removes the evidence for record [390a35]
+    the record still anchors to session.go:2-4 and reads as current
+    Namespace all three session keys to CHECKOUT_*.
+    what made it true is gone, so the decision now rests on nothing.
+```
+
+That change never opened `session.go`. The record is still perfectly anchored and
+still reads as current. What went is the reason it was true — and no reviewer would
+have caught it.
+
+**A record may never be grounded in another record.** Cross-reference them for
+reading all you like; citing one as grounds is refused. That single link is how one
+wrong record makes the next look credible — Wikipedia calls its version
+*citogenesis*, and the rule is the same one: link to another article freely, never
+use it as your source.
+
+Records with no evidence are normal, not second-class. Most decisions are judgement
+under constraints and have no artifact behind them. The field exists to stop the
+unfalsifiable half from passing as the checkable half, not to demand proof of
+everything.
+
+### Anchoring: what is not built
+
 The AST path from the design notes is not built. Per-line hashes already survive
 insertion, deletion, reindentation and whole-block moves; tree-sitter buys the
 remainder for the price of a CGo dependency, and waits until a real repo produces
@@ -134,8 +199,8 @@ everything it says. Being loudly uncertain is a feature.
 | Phase | Scope |
 |---|---|
 | **0** | ✅ Claude Code `PreToolUse` hook → records → `why <file>:<line>` and `why log`. |
-| **1** | ✅ Content-hash anchoring, confidence decay, orphan surfacing, `why add`, and backfill from `ponytail:` comments. Still open: backfill from git history and ADR/review docs, AST paths, capture, record signing. |
-| **2** | `why check` as a CI gate, comparing a diff against records. |
+| **1** | ✅ Content-hash anchoring, confidence decay, orphan surfacing, evidence pointers, `why add`, `why rm`, and backfill from `ponytail:` comments. Still open: backfill from git history and ADR/review docs, AST paths, capture, record signing. |
+| **2** | ✅ `why check` as a CI gate, comparing a diff against records. |
 | **3** | End-to-end encrypted team sync + dashboard: AI-authorship attribution, per-commit cost, violation history. |
 
 Phase 0 has to be useful on its own. Backfill in Phase 1 isn't polish — a

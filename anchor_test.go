@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -114,6 +115,63 @@ func TestAnchorOrphansRatherThanGuess(t *testing.T) {
 	}
 	if a.Start != 0 || a.End != 0 {
 		t.Errorf("an orphan must claim no line, got %d-%d", a.Start, a.End)
+	}
+}
+
+// --- rare lines vs boilerplate ------------------------------------------
+
+// The dangerous case. A record's span is nothing but lines that occur all over
+// the file. Delete the original site and a naive scan finds the same sequence
+// somewhere else, then reports a confident 0.90 move onto unrelated code.
+func TestAnchorRefusesToChaseABoilerplateSpan(t *testing.T) {
+	// `os.Exit(0)` and `}` five times over. The record covers the first pair;
+	// then that pair is removed.
+	var file []string
+	for i := 0; i < 5; i++ {
+		file = append(file, "if err != nil {", "os.Exit(0)", "}")
+	}
+	r := Record{ID: "boiler", File: "a.go", Start: 2, End: 3,
+		Lines: hashSpan([]string{"os.Exit(0)", "}"})}
+
+	// Still there, exactly where recorded: fine, no searching involved.
+	if a := resolveAnchor(file, r); a.State != StateExact {
+		t.Fatalf("an unmoved span should still anchor exactly, got %q", a.State)
+	}
+
+	// Now remove the recorded pair. The identical pair still exists four times
+	// over, and the anchor must NOT claim any of them.
+	cut := append([]string{"if err != nil {"}, file[3:]...)
+	a := resolveAnchor(cut, r)
+	if a.State == StateDrifted {
+		t.Fatalf("claimed a confident move to %d-%d on lines that appear all over the file",
+			a.Start, a.End)
+	}
+	if a.Confidence >= weakFloor {
+		t.Errorf("boilerplate must not earn confidence, got %q at %.2f", a.State, a.Confidence)
+	}
+}
+
+// The mild case. A block is gutted but its scaffolding survives, so an unweighted
+// count reads "most of it is still here" when everything meaningful is gone.
+func TestAnchorDoesNotSurviveOnScaffoldingAlone(t *testing.T) {
+	var file []string
+	for i := 0; i < 12; i++ { // plenty of braces elsewhere, so `}` is common
+		file = append(file, "func f"+strconv.Itoa(i)+"() {", "\tdoWork()", "}")
+	}
+	// The record covers a unique middle line plus a common brace.
+	file[19] = "\tcritical := loadTheThing()"
+	r := Record{ID: "gutted", File: "a.go", Start: 20, End: 21,
+		Lines: hashSpan([]string{"critical := loadTheThing()", "}"})}
+	if a := resolveAnchor(file, r); a.State != StateExact {
+		t.Fatalf("setup wrong: expected exact, got %q at %d-%d", a.State, a.Start, a.End)
+	}
+
+	// Rewrite the unique line. The brace still matches — half the span by count.
+	file[19] = "\tcritical := loadSomethingElse()"
+	a := resolveAnchor(file, r)
+	if a.State != StateOrphaned {
+		t.Errorf("only the brace survives, so this should orphan, got %q at %.2f",
+			a.State, a.Confidence)
 	}
 }
 

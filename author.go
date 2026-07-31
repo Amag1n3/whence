@@ -39,6 +39,9 @@ func addCmd(args []string) {
 	decision := fl.String("d", "", "the decision, one line")
 	why := fl.String("w", "", "why it was made")
 	source := fl.String("s", "manual", "where the decision came from")
+	var evidence multiFlag
+	fl.Var(&evidence, "e", "something checkable: a file:line, a command, a commit, a link (repeatable)")
+	asAgent := fl.Bool("agent", false, "an agent wrote this, so it needs a human to confirm it")
 	if err := fl.Parse(args[1:]); err != nil {
 		os.Exit(2)
 	}
@@ -52,7 +55,7 @@ func addCmd(args []string) {
 		os.Exit(2)
 	}
 
-	rec, store, err := add(file, start, end, *decision, *why, *source)
+	rec, store, err := add(file, start, end, *decision, *why, *source, author(*asAgent), evidence)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "why:", err)
 		os.Exit(1)
@@ -64,6 +67,57 @@ func addCmd(args []string) {
 	print1(rec)
 }
 
+// multiFlag is a flag that may be given more than once.
+type multiFlag []string
+
+func (m *multiFlag) String() string     { return strings.Join(*m, ", ") }
+func (m *multiFlag) Set(v string) error { *m = append(*m, v); return nil }
+
+// buildEvidence turns what the author typed into pointers, anchoring the ones
+// that name a place in the code.
+//
+// Two things are refused rather than accepted quietly, both because a bad
+// pointer is silent forever otherwise:
+//
+//   - anything aimed at the record store, which is the citogenesis rule made
+//     literal (DECISIONS §17);
+//   - anything that reads as file:lines but cannot be read there, which is
+//     almost always a typo — and stored as plain text it would look fine while
+//     buying none of the rot detection that made it worth writing.
+func buildEvidence(root string, refs []string) ([]Evidence, error) {
+	var out []Evidence
+	for _, ref := range refs {
+		if strings.Contains(ref, storeDirName) {
+			return nil, fmt.Errorf(
+				"evidence %q points into the record store — a record may reference another for reading, but never cite one as its grounds, because that is the link that lets one wrong record make the next look credible (§17)", ref)
+		}
+
+		e := Evidence{Ref: ref}
+		f, start, end := splitSpan(ref)
+
+		// A URL has a colon and digits in it and is not a line range.
+		if start == 0 || strings.Contains(ref, "://") {
+			out = append(out, e)
+			continue
+		}
+
+		lines := fileLines(filepath.Join(root, f))
+		if lines == nil || start < 1 || end < start || end > len(lines) {
+			return nil, fmt.Errorf(
+				"evidence %q reads as a line range but %s has no lines %d-%d. If it is not a file, write it in a form that cannot be mistaken for one",
+				ref, f, start, end)
+		}
+		hs := hashSpan(lines[start-1 : end])
+		if len(hs) == 0 || !identifiable(hs, counts(significant(lines))) {
+			return nil, fmt.Errorf(
+				"evidence %q is blank or has nothing distinctive in it, so its own anchor could not be trusted. Point at lines unique to what you mean", ref)
+		}
+		e.File, e.Start, e.End, e.Lines = filepath.ToSlash(f), start, end, hs
+		out = append(out, e)
+	}
+	return out, nil
+}
+
 func addUsage() {
 	fmt.Fprintln(os.Stderr, `usage: why add <file>:<start>-<end> -d "decision" [-w "why"] [-s source]`)
 	os.Exit(2)
@@ -72,7 +126,7 @@ func addUsage() {
 // add anchors a decision to a span of a file and appends it to the nearest
 // store. It returns the record as it resolves, so the caller can show the
 // anchor it just computed rather than assert it worked.
-func add(file string, start, end int, decision, why, source string) (Resolved, string, error) {
+func add(file string, start, end int, decision, why, source, author string, evidence []string) (Resolved, string, error) {
 	abs, err := filepath.Abs(file)
 	if err != nil {
 		return Resolved{}, "", err
@@ -88,6 +142,16 @@ func add(file string, start, end int, decision, why, source string) (Resolved, s
 	if len(hashes) == 0 {
 		return Resolved{}, "", fmt.Errorf("%s:%d-%d is blank — nothing there to anchor to", file, start, end)
 	}
+	// Refuse a span that could not be found again. Every line in it occurs all
+	// over the file, so the moment the code moves, the anchor has nothing to
+	// distinguish this block from any other. Failing here is worth much more
+	// than failing at lookup: right now the author is looking at the file and
+	// can widen the span, which is the actual fix.
+	if !identifiable(hashes, counts(significant(lines))) {
+		return Resolved{}, "", fmt.Errorf(
+			"%s:%d-%d has nothing distinctive in it — every line appears elsewhere in the file, so this anchor could not tell the block apart from any lookalike. Widen the span to include a line unique to it",
+			file, start, end)
+	}
 
 	store, root, ok := FindStore(abs)
 	if !ok {
@@ -97,6 +161,11 @@ func add(file string, start, end int, decision, why, source string) (Resolved, s
 		fmt.Println("created", filepath.Join(root, storeDirName))
 	}
 	rs, err := Load(store)
+	if err != nil {
+		return Resolved{}, "", err
+	}
+
+	ev, err := buildEvidence(root, evidence)
 	if err != nil {
 		return Resolved{}, "", err
 	}
@@ -115,13 +184,24 @@ func add(file string, start, end int, decision, why, source string) (Resolved, s
 		Decision: decision,
 		Why:      why,
 		Lines:    hashes,
+		Evidence: ev,
+		Author:   author,
+	}
+	// A human writing a record is the confirmation. Only an agent's record waits
+	// for one, which is the whole point of tracking who wrote it.
+	if author != authorAgent {
+		r.Verified = r.Date
 	}
 	r.ID = newID(r)
 
 	if err := save(store, append(rs, r)); err != nil {
 		return Resolved{}, "", err
 	}
-	return Resolved{Record: r, Anchor: resolveAnchor(lines, r)}, store, nil
+	return Resolved{
+		Record:  r,
+		Anchor:  resolveAnchor(lines, r),
+		Grounds: resolveEvidence(root, r),
+	}, store, nil
 }
 
 // createStore makes a store in the working directory. Deliberately not "the git
@@ -179,13 +259,19 @@ func save(path string, rs []Record) error {
 
 // newID derives a short id from the record's own content.
 //
-// ponytail: 4 hex chars, matching the #4f2a shape the README uses. ~65k values,
-// so a collision becomes likely around a few hundred records; nothing keys off
-// the id yet, so a duplicate is cosmetic today. Widen when `why check` starts
-// citing ids in CI output.
+// Was 4 hex chars, matching the #4f2a shape in the README, on the grounds that
+// nothing keyed off an id so a collision was cosmetic. `why check` cites ids in
+// CI output, where a human reads one and looks it up — a duplicate stops being
+// cosmetic there. Widened to 6 on that trigger, which the record covering this
+// function named as its own condition.
+//
+// ponytail: 6 hex chars, ~16.7M values, so collisions get likely somewhere
+// around a few thousand records. Records already written keep their 4-char ids;
+// nothing parses an id's length. Widen again, or key on a real hash, if the
+// store ever gets that big.
 func newID(r Record) string {
 	sum := sha256.Sum256([]byte(r.File + strconv.Itoa(r.Start) + r.Decision + r.Date))
-	return hex.EncodeToString(sum[:2])
+	return hex.EncodeToString(sum[:3])
 }
 
 // splitSpan parses "src/a.go:142-148", "src/a.go:142" and "src/a.go" (0, 0).
@@ -209,6 +295,60 @@ func splitSpan(s string) (file string, start, end int) {
 		return s, 0, 0
 	}
 	return s[:i], x, y
+}
+
+// --- removing one -------------------------------------------------------
+
+// rmCmd deletes a record by id.
+//
+// Exists because `why check` tells you an orphaned record must be re-anchored or
+// deleted deliberately, and advice you cannot act on is worse than none. Deleting
+// is the honest end of an orphan's life: the code a decision described is gone,
+// so either the decision moved (re-add it, anchored to where it lives now) or it
+// stopped being true.
+//
+// No confirmation prompt: the store is committed, so `git checkout` is the undo,
+// and it is a better one than anything this could offer.
+func rmCmd(args []string) {
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: why rm <id>")
+		os.Exit(2)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "why:", err)
+		os.Exit(1)
+	}
+	store, _, ok := FindStore(filepath.Join(cwd, "x"))
+	if !ok {
+		fmt.Fprintf(os.Stderr, "no %s/%s found above %s\n", storeDirName, recordsFileName, cwd)
+		os.Exit(1)
+	}
+	rs, err := Load(store)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "why:", err)
+		os.Exit(1)
+	}
+
+	kept := make([]Record, 0, len(rs))
+	var gone *Record
+	for i, r := range rs {
+		if r.ID == args[0] {
+			gone = &rs[i]
+			continue
+		}
+		kept = append(kept, r)
+	}
+	if gone == nil {
+		fmt.Fprintf(os.Stderr, "why: no record [%s] in %s\n", args[0], store)
+		os.Exit(1)
+	}
+	if err := save(store, kept); err != nil {
+		fmt.Fprintln(os.Stderr, "why:", err)
+		os.Exit(1)
+	}
+	fmt.Printf("removed [%s] %s:%d-%d — %s\n",
+		gone.ID, gone.File, gone.Start, gone.End, gone.Decision)
 }
 
 // --- backfill -----------------------------------------------------------
@@ -263,7 +403,7 @@ func backfillCmd(args []string) {
 					continue
 				}
 			}
-			r, _, err := add(p, f.start, f.end, decision, why, backfillSource)
+			r, _, err := add(p, f.start, f.end, decision, why, backfillSource, authorHuman, nil)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "why: %s:%d — %v\n", rel, f.start, err)
 				continue

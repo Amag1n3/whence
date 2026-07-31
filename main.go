@@ -46,6 +46,10 @@ func main() {
 		addCmd(os.Args[2:])
 	case "backfill":
 		backfillCmd(os.Args[2:])
+	case "check":
+		checkCmd(os.Args[2:])
+	case "rm":
+		rmCmd(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -58,9 +62,14 @@ func usage() {
 
   why <file>[:<line>]   show recorded decisions for a file, or one line
   why log               list every record in the nearest store
-  why add <file>:<a>-<b> -d "decision" -w "why" [-s source]
-                        record a decision and anchor it to those lines
+  why add <file>:<a>-<b> -d "decision" -w "why" [-s source] [-e evidence]
+                        record a decision and anchor it to those lines.
+                        -e is repeatable and takes anything checkable: a
+                        file:line (anchored, so its rot is detectable), a
+                        command, a commit, a link. Never another record.
   why backfill [dir]    harvest ponytail: comments already in the code
+  why rm <id>           delete one record
+  why check [-base rev] report the records covering a diff; exit 1 if any
   why hook pre          (called by Claude Code; reads a hook payload on stdin)
 
 Records live in .whence/records.json, found by walking up from the file.
@@ -140,16 +149,23 @@ func hookPre() {
 // orphaned record as though it were current is being lied to. Uncertainty is
 // part of the payload, not a detail for the human view.
 //
-// ponytail: ranks live-anchors-then-newest and truncates. Real relevance
-// ranking (does this record concern the lines actually being changed? has it
-// been contradicted before?) needs the diff, which PreToolUse does not have.
-// Revisit when `why check` exists in Phase 2.
+// ponytail: ranks live-anchors-then-newest and truncates. Real relevance ranking
+// (does this record concern the lines actually being changed?) needs a diff.
+// `why check` now exists and has one — but this is PreToolUse, which fires
+// *before* the edit, so there is no diff here to rank against and there cannot
+// be. The trigger this note used to carry ("revisit when check exists") was the
+// wrong trigger. The right one is a hook that runs after an edit: PostToolUse
+// could rank by what actually changed, at the cost of arriving too late to stop
+// anything.
 func renderContext(rs []Resolved) string {
 	var b strings.Builder
 	b.WriteString(contextPreamble)
 	for i, r := range rs {
 		line := fmt.Sprintf("- [%s] %s — %s\n  why: %s\n  anchor: %s%s\n  source: %s\n",
 			r.Date, locate(r), r.Decision, r.Why, r.Anchor.State, confidence(r), r.Source)
+		for _, g := range r.Grounds {
+			line += fmt.Sprintf("  evidence: %s\n", ground(g))
+		}
 		if b.Len()+len(line) > maxContext {
 			fmt.Fprintf(&b, "- (%d more record(s) omitted: context cap)\n", len(rs)-i)
 			break
@@ -184,13 +200,35 @@ func confidence(r Resolved) string {
 	return fmt.Sprintf(" · confidence %.2f", r.Anchor.Confidence)
 }
 
+// ground renders one piece of evidence and what has become of it.
+//
+// A pointer at code that has since been deleted is the case worth shouting
+// about: the decision still reads as authoritative while the thing that made it
+// true has quietly gone. Saying so is the only way a reader can tell the
+// difference between a record that is grounded and one that merely looks it.
+func ground(g Grounded) string {
+	if !g.anchored() {
+		return g.Ref
+	}
+	if g.Anchor.State == StateOrphaned {
+		return fmt.Sprintf("%s · GONE — the grounds for this decision no longer exist", g.Ref)
+	}
+	if g.Anchor.State == StateExact {
+		return fmt.Sprintf("%s · %s", g.Ref, g.Anchor.State)
+	}
+	// It moved or changed, so the ref as written is now misleading.
+	return fmt.Sprintf("%s · %s",
+		locate(Resolved{Record: g.asRecord(), Anchor: g.Anchor}), g.Anchor.State)
+}
+
 // appendSurfaced logs that records were put in front of an agent. It writes
 // into the store that produced them, not the session directory.
 //
 // ponytail: this counts SURFACINGS, not caught contradictions, so it
-// over-counts — most surfacings are purely informational. The DECISIONS §8
-// falsification number needs `why check` comparing a diff against records
-// (Phase 2). Do not read this file as the falsification metric.
+// over-counts — most surfacings are purely informational. Do not read this file
+// as the DECISIONS §8 falsification metric. That number now comes from
+// `why check`, which compares a diff against records; count the records it
+// reports and how many turned out to matter.
 func appendSurfaced(root, file string, rs []Resolved) {
 	f, err := os.OpenFile(filepath.Join(root, storeDirName, surfacedLogName),
 		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
@@ -266,8 +304,9 @@ func logAll() {
 	// has to be fast.
 	for _, r := range rs {
 		print1(Resolved{
-			Record: r,
-			Anchor: resolveAnchor(fileLines(filepath.Join(root, r.File)), r),
+			Record:  r,
+			Anchor:  resolveAnchor(fileLines(filepath.Join(root, r.File)), r),
+			Grounds: resolveEvidence(root, r),
 		})
 	}
 }
@@ -279,6 +318,9 @@ func print1(r Resolved) {
 		for _, l := range strings.Split(r.Why, "\n") {
 			fmt.Printf("    %s\n", l)
 		}
+	}
+	for _, g := range r.Grounds {
+		fmt.Printf("    evidence: %s\n", ground(g))
 	}
 	fmt.Printf("    %s · %s  [%s]\n", locate(r), r.Anchor.State, r.ID)
 }

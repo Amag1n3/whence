@@ -39,6 +39,86 @@ type Record struct {
 	// anchor. Empty means a record written before anchoring existed, or by
 	// hand; those fall back to exact line ranges and say so when displayed.
 	Lines []string `json:"line_hashes,omitempty"`
+
+	// Evidence is what somebody else could check to see whether this record is
+	// true. Optional, and most records will not have any — see the Evidence type.
+	Evidence []Evidence `json:"evidence,omitempty"`
+
+	// Author is who wrote this — "human" or "agent". Empty means human, which is
+	// every record written before capture existed.
+	//
+	// Not about identity or blame; §7.3's signing covers that. This is about how
+	// much human attention the claim has had. A human writing a record is one
+	// deliberate act of attention. An agent writing one is zero.
+	Author string `json:"author,omitempty"`
+
+	// Verified is the date a human confirmed an agent-written record, empty until
+	// then. Human-written records need no entry: writing one IS the confirmation.
+	//
+	// DECISIONS §17.4 — Wikipedia requires content to be *verifiable* but not
+	// verified when first added, and that gap is what circular citation exploits.
+	// This closes it for the only records that have the gap.
+	Verified string `json:"verified,omitempty"`
+}
+
+const (
+	authorHuman = "human"
+	authorAgent = "agent"
+)
+
+// unchecked reports whether a record is asserting something no human has ever
+// looked at. Only agent-written records can be in that state.
+func (r Record) unchecked() bool {
+	return r.Author == authorAgent && r.Verified == ""
+}
+
+// Evidence is a pointer to something that can be checked WITHOUT consulting
+// another record.
+//
+// That exclusion is the whole design. A record justified by another record is
+// how one wrong record makes the next one look credible, which is the loop
+// DECISIONS §17 is about — Wikipedia calls its version citogenesis and its rule
+// is the same: link to another article freely, never use one as your source.
+// Cross-referencing records for reading is fine; citing one as grounds is not.
+//
+// Four useful shapes, in descending order of how much they buy:
+//
+//	a place in the code   auth.go:88-94   — anchored, so its rot is detectable
+//	a command             go test ./...   — anyone can re-run it
+//	a commit              9f2a1c3         — immutable
+//	something external    a ticket, an incident, a review
+//
+// A code location is the strongest because it gets its own anchor. When the code
+// cited as grounds is deleted, whence can say *the evidence for this decision is
+// gone* on its own, with no human checking anything.
+//
+// Deliberately NOT a snippet of the code. A copy goes stale silently, which is
+// the disease this is meant to treat.
+//
+// Records with no evidence are normal and not second-class. Most decisions are
+// judgement under constraints ("a per-account lock is a cache-invalidation
+// problem nobody asked for") and have no artifact behind them. The point of the
+// field is not to force evidence onto everything — it is to stop unfalsifiable
+// judgement from reading as established fact because it sits in the same
+// paragraph as something checkable.
+type Evidence struct {
+	Ref string `json:"ref"` // as written, and what gets displayed
+
+	// Set only when Ref named a place in the code, so it can be re-anchored.
+	File  string   `json:"file,omitempty"`
+	Start int      `json:"line_start,omitempty"`
+	End   int      `json:"line_end,omitempty"`
+	Lines []string `json:"line_hashes,omitempty"`
+}
+
+// anchored reports whether this pointer is at a place in the code, and so has a
+// state that can rot.
+func (e Evidence) anchored() bool { return len(e.Lines) > 0 }
+
+// asRecord adapts a code-location pointer so it can go through resolveAnchor —
+// the same machinery, because the question is the same question.
+func (e Evidence) asRecord() Record {
+	return Record{File: e.File, Start: e.Start, End: e.End, Lines: e.Lines}
 }
 
 // Resolved is a record plus where it actually points in the code as it stands.
@@ -46,6 +126,14 @@ type Record struct {
 // and an End, and that ambiguity is the one bug this type exists to prevent.
 type Resolved struct {
 	Record
+	Anchor  Anchor
+	Grounds []Grounded
+}
+
+// Grounded is one piece of evidence and, when it names a place in the code, what
+// has happened to that place since.
+type Grounded struct {
+	Evidence
 	Anchor Anchor
 }
 
@@ -133,7 +221,7 @@ func Match(root string, rs []Record, file string, line int) []Resolved {
 		if line != 0 && (a.Start == 0 || line < a.Start || line > a.End) {
 			continue
 		}
-		out = append(out, Resolved{Record: r, Anchor: a})
+		out = append(out, Resolved{Record: r, Anchor: a, Grounds: resolveEvidence(root, r)})
 	}
 
 	// Live anchors first, then newest first. Dates are ISO, so a string compare

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -51,6 +52,13 @@ const (
 	driftedConfidence = 0.90
 	weakCeiling       = 0.85
 	weakFloor         = 0.60
+
+	// rareAt is how many times a line may appear in a file and still count as
+	// identifying a place in it. `store.Set("CHECKOUT_role", s.Role)` appears
+	// once and pins a location exactly; `}` appears forty times and pins
+	// nothing. Two rather than one because a line legitimately appearing twice
+	// (an early return and a final one) is still narrow enough to be evidence.
+	rareAt = 2
 )
 
 // Anchor is where a record points in the file as it is now.
@@ -115,6 +123,28 @@ func significant(lines []string) []hline {
 	return out
 }
 
+// resolveEvidence reports what has happened to each of a record's grounds.
+//
+// A pointer at a place in the code goes through resolveAnchor, because the
+// question is identical: is the thing this refers to still there? That is the
+// payoff of storing grounds as pointers rather than as copied snippets — when the
+// code somebody cited as evidence is deleted, whence can say the grounds are gone
+// without a human checking anything.
+func resolveEvidence(root string, r Record) []Grounded {
+	if len(r.Evidence) == 0 {
+		return nil
+	}
+	out := make([]Grounded, 0, len(r.Evidence))
+	for _, e := range r.Evidence {
+		g := Grounded{Evidence: e}
+		if e.anchored() {
+			g.Anchor = resolveAnchor(fileLines(filepath.Join(root, e.File)), e.asRecord())
+		}
+		out = append(out, g)
+	}
+	return out
+}
+
 // fileLines reads a file into 1-indexed-by-convention lines. An unreadable file
 // yields nil, which resolveAnchor reads as "orphaned" — the file being gone is
 // a legitimate answer, not an error to propagate.
@@ -154,6 +184,26 @@ func resolveAnchor(lines []string, r Record) Anchor {
 	if len(sig) < h {
 		return Anchor{State: StateOrphaned}
 	}
+	freq := counts(sig)
+
+	// Searching only makes sense if the span contains something distinctive. A
+	// span of `os.Exit(0)` and `}` matches in a dozen places, so whichever match
+	// is nearest would be reported as a confident move onto unrelated code —
+	// the one failure this file exists to prevent.
+	//
+	// This gate has to come before BOTH scans, not just the exact one. The
+	// weighted score below is a ratio, so a span where every line is common
+	// scores 1.0 when it survives: common lines over common lines. Weighting
+	// catches a span that loses its rare lines and keeps its scaffolding; it
+	// cannot catch a span that never had a rare line to begin with. Only this
+	// can.
+	//
+	// The span was already checked at its recorded lines above, so reaching here
+	// means it is not where it says it is. Unidentifiable and not where it was
+	// recorded is exactly what orphaned means.
+	if !identifiable(r.Lines, freq) {
+		return Anchor{State: StateOrphaned}
+	}
 
 	// The same content somewhere else: the code moved. Prefer the candidate
 	// nearest the recorded span, so a block that appears twice does not send
@@ -181,7 +231,7 @@ func resolveAnchor(lines []string, r Record) Anchor {
 	// anchoring records to spans hundreds of lines long.
 	bestSim, bestAt := 0.0, -1
 	for i := 0; i+h <= len(sig); i++ {
-		if s := overlap(r.Lines, sig[i:i+h]); s > bestSim {
+		if s := overlap(r.Lines, sig[i:i+h], freq); s > bestSim {
 			bestSim, bestAt = s, i
 		}
 	}
@@ -198,11 +248,19 @@ func resolveAnchor(lines []string, r Record) Anchor {
 	return Anchor{State: StateOrphaned, Confidence: bestSim}
 }
 
-// overlap is how much of the recorded block survives in this window, as a
-// fraction of the record's own length. Asymmetric on purpose: the question is
-// what happened to the recorded lines, not how similar two blocks are to each
-// other. Multiset, so three identical lines are not matched by one.
-func overlap(want []string, got []hline) float64 {
+// overlap is how much of the recorded block survives in this window, weighted
+// so that rare lines count for more than common ones.
+//
+// Asymmetric on purpose: the question is what happened to the recorded lines,
+// not how similar two blocks are to each other. Counted as a multiset, so three
+// identical lines are not matched by one.
+//
+// The weighting is what stops scaffolding from carrying a dead record. A block
+// rewritten down to its `func` line and its closing brace keeps two of four
+// lines — an unweighted 0.50, comfortably "weak, still here" — while every line
+// that meant anything is gone. Dividing each line's contribution by how often it
+// occurs in the file puts that case near zero, where it belongs.
+func overlap(want []string, got []hline, freq map[string]int) float64 {
 	if len(want) == 0 {
 		return 0
 	}
@@ -210,14 +268,44 @@ func overlap(want []string, got []hline) float64 {
 	for _, g := range got {
 		pool[g.h]++
 	}
-	hit := 0
+	var total, hit float64
 	for _, w := range want {
+		// A line absent from the file entirely is treated as maximally rare: it
+		// is unique to the record, and its absence is the strongest evidence
+		// there is that the block is gone.
+		wt := 1 / float64(max(1, freq[w]))
+		total += wt
 		if pool[w] > 0 {
 			pool[w]--
-			hit++
+			hit += wt
 		}
 	}
-	return float64(hit) / float64(len(want))
+	if total == 0 {
+		return 0
+	}
+	return hit / total
+}
+
+// counts is how many times each line appears in the file.
+func counts(sig []hline) map[string]int {
+	freq := make(map[string]int, len(sig))
+	for _, s := range sig {
+		freq[s.h]++
+	}
+	return freq
+}
+
+// identifiable reports whether a span contains at least one line rare enough to
+// pin a location. A span made entirely of lines that occur all over the file
+// cannot be found by content — searching for it anyway produces a confident
+// answer about whichever lookalike happens to be nearest.
+func identifiable(want []string, freq map[string]int) bool {
+	for _, w := range want {
+		if n := freq[w]; n > 0 && n <= rareAt {
+			return true
+		}
+	}
+	return false
 }
 
 func sameSeq(a, b []string) bool {
