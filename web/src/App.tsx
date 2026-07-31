@@ -1,0 +1,547 @@
+import { motion, useReducedMotion } from 'motion/react'
+import { ArrowUpRight, Check, Minus } from 'lucide-react'
+import type { ReactNode } from 'react'
+
+import { Reveal } from '@/components/Reveal'
+import { Terminal } from '@/components/Terminal'
+import { DriftDemo } from '@/components/DriftDemo'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
+import { cn } from '@/lib/utils'
+
+const REPO = 'https://github.com/Amag1n3/whence'
+
+/* ---------------------------------------------------------------- shell */
+
+function Ambient() {
+  const reduced = useReducedMotion()
+  return (
+    <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
+      <motion.div
+        className="absolute -top-[28rem] left-1/2 h-[52rem] w-[52rem] -translate-x-1/2 rounded-full"
+        style={{
+          background:
+            'radial-gradient(circle, oklch(0.782 0.106 146 / 0.13), transparent 62%)',
+        }}
+        animate={reduced ? undefined : { scale: [1, 1.09, 1], opacity: [0.75, 1, 0.75] }}
+        transition={{ duration: 17, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      <motion.div
+        className="absolute top-[58rem] -right-40 h-[36rem] w-[36rem] rounded-full"
+        style={{
+          background:
+            'radial-gradient(circle, oklch(0.833 0.118 77 / 0.085), transparent 65%)',
+        }}
+        animate={reduced ? undefined : { scale: [1, 1.14, 1], opacity: [0.6, 0.95, 0.6] }}
+        transition={{ duration: 23, repeat: Infinity, ease: 'easeInOut', delay: 3 }}
+      />
+    </div>
+  )
+}
+
+function Nav() {
+  return (
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.06] bg-background/70 backdrop-blur-xl">
+      <nav className="mx-auto flex h-14 max-w-[980px] items-center gap-6 px-6">
+        <a href="#top" className="font-mono text-[13.5px] font-medium tracking-tight">
+          <span className="text-moss">●</span> whence
+        </a>
+        <div className="ml-auto flex items-center gap-5 font-mono text-[12.5px] text-muted-foreground">
+          <a href="#how" className="transition-colors hover:text-foreground">
+            how
+          </a>
+          <a href="#start" className="transition-colors hover:text-foreground">
+            quickstart
+          </a>
+          <a
+            href={REPO}
+            className="flex items-center gap-0.5 transition-colors hover:text-foreground"
+          >
+            github <ArrowUpRight className="size-3.5" />
+          </a>
+        </div>
+      </nav>
+    </header>
+  )
+}
+
+function Section({
+  id,
+  eyebrow,
+  title,
+  children,
+  className,
+}: {
+  id?: string
+  eyebrow?: string
+  title?: string
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <section id={id} className={cn('mx-auto max-w-[980px] px-6 py-16 sm:py-24', className)}>
+      {eyebrow && (
+        <Reveal>
+          <p className="mb-3 font-mono text-[11px] tracking-[0.16em] text-moss uppercase">
+            {eyebrow}
+          </p>
+        </Reveal>
+      )}
+      {title && (
+        <Reveal delay={0.05}>
+          <h2 className="mb-6 max-w-[20ch] text-[clamp(1.7rem,3.4vw,2.35rem)] leading-[1.15]">
+            {title}
+          </h2>
+        </Reveal>
+      )}
+      {children}
+    </section>
+  )
+}
+
+function Prose({ children }: { children: ReactNode }) {
+  return (
+    <div className="max-w-[64ch] space-y-4 text-[16.5px] leading-[1.72] text-muted-foreground">
+      {children}
+    </div>
+  )
+}
+
+function Code({ children, caption }: { children: string; caption?: string }) {
+  return (
+    <div className="lit overflow-hidden rounded-lg border border-white/10 bg-terminal">
+      {caption && (
+        <div className="border-b border-white/[0.07] px-4 py-2 font-mono text-[11px] text-white/35">
+          {caption}
+        </div>
+      )}
+      <div className="term-scroll overflow-x-auto px-4 py-3.5">
+        <pre className="min-w-max font-mono text-[12.5px] leading-[1.75] text-foreground/85">
+          {children}
+        </pre>
+      </div>
+    </div>
+  )
+}
+
+/* ----------------------------------------------------------------- page */
+
+const LEDGER = [
+  {
+    on: true,
+    t: 'why <file>:<line>',
+    d: 'Recorded decisions for a file, or for one line.',
+  },
+  {
+    on: true,
+    t: 'The PreToolUse hook',
+    d: 'Records reach Claude Code before it edits. Fails open, always — a broken why costs you nothing but a missing record.',
+  },
+  {
+    on: true,
+    t: 'Store resolution by file',
+    d: 'Walks up from the edited file the way git finds .git, so a session in one repo still resolves records for a sibling repo.',
+  },
+  {
+    on: false,
+    t: 'Capture',
+    d: 'Records are hand-written. Pulling signal out of a session is the actual hard problem; the hand-written ones are the spec for solving it.',
+  },
+  {
+    on: false,
+    t: 'Hybrid anchoring',
+    d: 'Content hash, AST path, confidence decay, orphan states.',
+  },
+  { on: false, t: 'why check', d: 'The CI gate. This is the one that makes it a control.' },
+]
+
+const STEPS = [
+  {
+    t: 'Capture',
+    tag: 'not built',
+    d: "Subscribe to the agent's hooks and record the decision trail as the session runs. Redaction happens here, before anything is written — once a secret reaches a content-addressed store it may already be replicated.",
+  },
+  {
+    t: 'Anchor',
+    tag: 'exact ranges only',
+    d: 'Bind each record to a file and a span. Today that span is a hand-written line range.',
+  },
+  {
+    t: 'Surface',
+    tag: 'works',
+    d: 'From your terminal, and into a coding agent’s context through a PreToolUse hook before it edits. Phase 2 adds CI.',
+  },
+]
+
+const NOTS = [
+  [
+    'Not a code reviewer.',
+    'Zero opinions about code quality. That category is well served and well funded; taking that fight would lose it.',
+  ],
+  ['Not an observability platform.', 'No traces, no evals, no token dashboards.'],
+  ['Not a knowledge graph.', 'It answers one question about one line.'],
+]
+
+const COMMITMENTS = [
+  [
+    'Hashes, paths and ranges — never file contents',
+    'unless you turn that on, per repo.',
+  ],
+  [
+    'It refuses to run on a git-tracked store',
+    'and the surfacing log is gitignored on day one.',
+  ],
+  [
+    'Records are data, never directives',
+    'Anything that can write .whence/ can put text in front of your agent, so records are framed as history and marked untrusted when they are not yours.',
+  ],
+  [
+    'Attribution stays aggregate',
+    'No per-developer AI-authorship leaderboards. This is a developer tool and it will not become a surveillance tool.',
+  ],
+]
+
+export default function App() {
+  return (
+    <div className="grain relative min-h-screen" id="top">
+      <Ambient />
+      <Nav />
+
+      <main className="relative">
+        {/* ------------------------------------------------------- hero */}
+        <section className="mx-auto max-w-[980px] px-6 pt-32 pb-14 sm:pt-40 sm:pb-20">
+          <Reveal>
+            <Badge
+              variant="outline"
+              className="mb-7 gap-2 border-white/12 bg-white/[0.04] py-1.5 pr-3.5 pl-2.5 font-mono text-[11.5px] font-normal"
+            >
+              <span className="size-1.5 rounded-full bg-moss" />
+              <span className="text-muted-foreground">
+                <span className="text-foreground">Phase 0 works.</span> Capture is not
+                built.
+              </span>
+            </Badge>
+          </Reveal>
+
+          <Reveal delay={0.06}>
+            <h1 className="max-w-[16ch] text-[clamp(2.5rem,7vw,4.4rem)] leading-[1.03] font-semibold">
+              Git remembers what changed.{' '}
+              <span className="font-mono text-[0.86em] font-medium text-moss">why</span>{' '}
+              remembers the reason.
+            </h1>
+          </Reveal>
+
+          <Reveal delay={0.12}>
+            <p className="mt-6 max-w-[52ch] text-[17.5px] leading-[1.62] text-muted-foreground sm:text-[19px]">
+              Your coding agent works out why the code has to be like this, then throws it
+              away when the session ends. This keeps it, pinned to the lines it was about,
+              and hands it back to the next agent before it edits them.
+            </p>
+          </Reveal>
+
+          <Reveal delay={0.18}>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Button asChild size="lg" className="rounded-full font-medium">
+                <a href="#start">Try it in five minutes</a>
+              </Button>
+              <Button
+                asChild
+                size="lg"
+                variant="outline"
+                className="rounded-full border-white/12 bg-white/[0.03] font-medium hover:bg-white/[0.07]"
+              >
+                <a href={REPO}>
+                  Read the source <ArrowUpRight className="size-4" />
+                </a>
+              </Button>
+            </div>
+          </Reveal>
+
+          <Reveal delay={0.26} className="mt-12">
+            <Terminal />
+          </Reveal>
+        </section>
+
+        {/* ---------------------------------------------------- problem */}
+        <Section eyebrow="the problem" title="The mess was load-bearing">
+          <Prose>
+            <p>
+              Everyone has this story. Someone opens a file, finds code that looks
+              redundant, tidies it up, and takes production down. The mess was there for a
+              reason — written that way after an incident — and the reason was never
+              recorded anywhere they would look.
+            </p>
+            <p>
+              That used to happen occasionally, at human speed. Now every team has an
+              infinitely fast engineer with total amnesia. Coding agents write a large
+              share of merged code and they do exactly this, several times a day, with no
+              memory of last Tuesday.
+            </p>
+          </Prose>
+          <Reveal delay={0.1}>
+            <p className="mt-9 max-w-[54ch] border-l-2 border-moss pl-6 text-[19px] leading-[1.55] font-medium text-foreground sm:text-[21px]">
+              The agent <em className="text-moss not-italic">had</em> the reasoning. It
+              weighed the options, hit the constraints, rejected the approaches. Then the
+              session ended and all of it was thrown away. What reached the repository was
+              a diff.
+            </p>
+          </Reveal>
+        </Section>
+
+        {/* ----------------------------------------------------- ledger */}
+        <Section eyebrow="honest status" title="What actually runs today">
+          <Prose>
+            <p>
+              This is days old and built in the open. Here is the line between what works
+              and what is still an intention.
+            </p>
+          </Prose>
+          <div className="mt-8 grid gap-px overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.06] sm:grid-cols-2">
+            {LEDGER.map((r, i) => (
+              <Reveal key={r.t} delay={i * 0.04}>
+                <div
+                  className={cn(
+                    'h-full bg-background/80 p-5 transition-colors',
+                    r.on ? 'hover:bg-moss/[0.04]' : 'hover:bg-white/[0.02]',
+                  )}
+                >
+                  <div className="flex items-center gap-2.5">
+                    {r.on ? (
+                      <Check className="size-4 shrink-0 text-moss" strokeWidth={2.5} />
+                    ) : (
+                      <Minus className="size-4 shrink-0 text-white/25" strokeWidth={2.5} />
+                    )}
+                    <span
+                      className={cn(
+                        'font-mono text-[13px]',
+                        r.on ? 'text-foreground' : 'text-white/45',
+                      )}
+                    >
+                      {r.t}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-[14.5px] leading-[1.6] text-muted-foreground">
+                    {r.d}
+                  </p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </Section>
+
+        {/* -------------------------------------------------------- how */}
+        <Section id="how" eyebrow="how it works" title="Capture, anchor, surface">
+          <div className="mt-2 grid gap-8 sm:grid-cols-3">
+            {STEPS.map((s, i) => (
+              <Reveal key={s.t} delay={i * 0.08}>
+                <div className="border-t border-white/[0.09] pt-5">
+                  <span className="font-mono text-[11px] text-white/30">
+                    {String(i + 1).padStart(2, '0')}
+                  </span>
+                  <h3 className="mt-2 flex flex-wrap items-center gap-2 text-[17px]">
+                    {s.t}
+                    <span
+                      className={cn(
+                        'rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide uppercase',
+                        s.tag === 'works'
+                          ? 'border-moss/30 text-moss'
+                          : 'border-white/12 text-white/35',
+                      )}
+                    >
+                      {s.tag}
+                    </span>
+                  </h3>
+                  <p className="mt-2.5 text-[14.5px] leading-[1.65] text-muted-foreground">
+                    {s.d}
+                  </p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </Section>
+
+        {/* --------------------------------------------------- anchoring */}
+        <Section eyebrow="the hard part" title="A record that loses its anchor is a diary entry">
+          <Prose>
+            <p>
+              A decision is about code, and code moves. Line 142 today is line 187 tomorrow
+              and in a different file next week. A tool that confidently points at the
+              wrong line teaches you to distrust everything else it says — so being loudly
+              uncertain is the feature, not a shortcoming.
+            </p>
+          </Prose>
+          <Reveal delay={0.1} className="mt-9">
+            <DriftDemo />
+          </Reveal>
+        </Section>
+
+        {/* ------------------------------------------------------- start */}
+        <Section id="start" eyebrow="quickstart" title="Try it in five minutes">
+          <Prose>
+            <p>
+              Four steps. You will be writing the records by hand — that is the current
+              design, not a gap in the instructions.
+            </p>
+          </Prose>
+
+          <div className="mt-9 space-y-9">
+            <Reveal>
+              <h3 className="mb-3 text-[16px]">
+                <span className="mr-2.5 font-mono text-[11.5px] text-white/30">01</span>
+                Build the binary
+              </h3>
+              <Code>{`git clone https://github.com/Amag1n3/whence
+cd whence && go build -o why .`}</Code>
+              <p className="mt-3 max-w-[62ch] text-[14.5px] leading-[1.65] text-muted-foreground">
+                The project is <b className="text-foreground">whence</b>; the binary is{' '}
+                <code className="font-mono text-foreground">why</code>, because{' '}
+                <code className="font-mono text-foreground">whence</code> is a zsh and ksh
+                builtin and builtins beat <code className="font-mono">$PATH</code>. Put it
+                somewhere on yours.
+              </p>
+            </Reveal>
+
+            <Reveal>
+              <h3 className="mb-3 text-[16px]">
+                <span className="mr-2.5 font-mono text-[11.5px] text-white/30">02</span>
+                Write a record
+              </h3>
+              <Code caption=".whence/records.json — commit this, it is the point">{`[
+  {
+    "id":         "b5",
+    "date":       "2026-07-27",
+    "source":     "code review, finding B5",
+    "file":       "src/auth/session.go",
+    "line_start": 142,
+    "line_end":   148,
+    "decision":   "Namespace all three session keys.",
+    "why":        "The admin dashboard reads them on the same origin..."
+  }
+]`}</Code>
+            </Reveal>
+
+            <Reveal>
+              <h3 className="mb-3 text-[16px]">
+                <span className="mr-2.5 font-mono text-[11.5px] text-white/30">03</span>
+                Read it back
+              </h3>
+              <Code>{`why src/auth/session.go:145   # one line
+why log                       # everything in the nearest store`}</Code>
+            </Reveal>
+
+            <Reveal>
+              <h3 className="mb-3 text-[16px]">
+                <span className="mr-2.5 font-mono text-[11.5px] text-white/30">04</span>
+                Put it in front of your agent
+              </h3>
+              <Code caption=".claude/settings.json">{`{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [{ "type": "command", "command": "why hook pre" }]
+      }
+    ]
+  }
+}`}</Code>
+              <p className="mt-3 max-w-[62ch] text-[14.5px] leading-[1.65] text-muted-foreground">
+                Claude Code now sees the record before it touches the file — passed as
+                history to be aware of, never as instructions to follow.
+              </p>
+            </Reveal>
+          </div>
+        </Section>
+
+        {/* -------------------------------------------------- boundaries */}
+        <Section eyebrow="scope" title="What it isn’t">
+          <div className="divide-y divide-white/[0.07] border-y border-white/[0.07]">
+            {NOTS.map(([t, d], i) => (
+              <Reveal key={t} delay={i * 0.05}>
+                <div className="py-4 text-[15.5px] leading-[1.6]">
+                  <b className="font-semibold text-foreground">{t}</b>{' '}
+                  <span className="text-muted-foreground">{d}</span>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </Section>
+
+        <Section eyebrow="commitments" title="What it does with your code">
+          <Prose>
+            <p>
+              This reads what an agent saw and did, which makes it sensitive by default.
+              Four commitments, written down before there was anything to break:
+            </p>
+          </Prose>
+          <div className="mt-7 divide-y divide-white/[0.07] border-y border-white/[0.07]">
+            {COMMITMENTS.map(([t, d], i) => (
+              <Reveal key={t} delay={i * 0.05}>
+                <div className="py-4 text-[15.5px] leading-[1.6]">
+                  <b className="font-semibold text-foreground">{t}</b>{' '}
+                  <span className="text-muted-foreground">{d}</span>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </Section>
+
+        {/* -------------------------------------------------------- kill */}
+        <Section className="pb-8">
+          <Reveal>
+            <div className="rounded-2xl border border-oxide/25 bg-oxide/[0.05] p-7 sm:p-10">
+              <p className="mb-3 font-mono text-[11px] tracking-[0.16em] text-oxide uppercase">
+                falsification
+              </p>
+              <h2 className="mb-5 max-w-[22ch] text-[clamp(1.7rem,3.4vw,2.35rem)] leading-[1.15]">
+                The number that kills it
+              </h2>
+              <p className="max-w-[58ch] text-[18px] leading-[1.58] text-foreground sm:text-[19.5px]">
+                Count the times an agent proposed a change that contradicted a recorded
+                decision and{' '}
+                <span className="font-mono text-[0.9em] text-moss">why</span> caught it.{' '}
+                <span className="text-oxide">
+                  If that is zero after three months of real daily use, the idea is wrong
+                  and this repo gets archived.
+                </span>
+              </p>
+              <Separator className="my-6 bg-white/[0.08]" />
+              <div className="grid max-w-[70ch] gap-4 text-[14.5px] leading-[1.65] text-muted-foreground sm:grid-cols-2">
+                <p>
+                  Agreed before a line of code existed, so it stays honest later. The
+                  counter needs <code className="font-mono">why check</code> to mean
+                  anything — today’s log counts how often records were shown, which
+                  over-counts, and is deliberately not reported as the number above.
+                </p>
+                <p>
+                  The other open doubt: if an agent’s stated reasoning is a post-hoc
+                  rationalisation rather than the actual cause, this preserves confident
+                  nonsense — durably. That gets tested against real captured sessions
+                  before any Phase 1 work starts.
+                </p>
+              </div>
+            </div>
+          </Reveal>
+        </Section>
+      </main>
+
+      <footer className="relative border-t border-white/[0.07]">
+        <div className="mx-auto flex max-w-[980px] flex-wrap items-center gap-x-6 gap-y-2 px-6 py-8 font-mono text-[12.5px] text-white/35">
+          <span className="text-white/55">
+            <span className="text-moss">●</span> whence
+          </span>
+          <a href={REPO} className="transition-colors hover:text-foreground">
+            github
+          </a>
+          <a
+            href="mailto:amogh@whence.fyi"
+            className="transition-colors hover:text-foreground"
+          >
+            amogh@whence.fyi
+          </a>
+          <span className="sm:ml-auto">started 2026-07-31</span>
+        </div>
+      </footer>
+    </div>
+  )
+}

@@ -2,3 +2,7 @@
 
 # local telemetry — the records themselves ARE meant to be committed
 .whence/surfaced.jsonl
+
+# site build
+web/node_modules/
+web/dist/

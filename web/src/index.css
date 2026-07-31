@@ -1,0 +1,179 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* ------------------------------------------------------------------
+   Palette: weathered stone and lichen. Warm basalt base (never pure
+   black — pure black is a screen colour, not a natural one), moss as
+   the primary, honey as the archival second, oxide for violations.
+   Every hue sits between 30 and 150 so nothing on the page is cold.
+   ------------------------------------------------------------------ */
+:root {
+  --radius: 0.75rem;
+
+  --background: oklch(0.161 0.009 88);
+  --foreground: oklch(0.957 0.005 88);
+
+  --card: oklch(0.197 0.010 88);
+  --card-foreground: oklch(0.957 0.005 88);
+  --popover: oklch(0.197 0.010 88);
+  --popover-foreground: oklch(0.957 0.005 88);
+
+  --primary: oklch(0.782 0.106 146);
+  --primary-foreground: oklch(0.185 0.030 146);
+
+  --secondary: oklch(0.245 0.011 88);
+  --secondary-foreground: oklch(0.957 0.005 88);
+
+  --muted: oklch(0.245 0.011 88);
+  --muted-foreground: oklch(0.706 0.011 88);
+
+  --accent: oklch(0.833 0.118 77);
+  --accent-foreground: oklch(0.200 0.035 77);
+
+  --destructive: oklch(0.657 0.152 34);
+  --destructive-foreground: oklch(0.975 0.010 34);
+
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.782 0.106 146 / 55%);
+
+  /* project-specific */
+  --moss: oklch(0.782 0.106 146);
+  --moss-deep: oklch(0.455 0.078 146);
+  --honey: oklch(0.833 0.118 77);
+  --oxide: oklch(0.657 0.152 34);
+  --dim: oklch(0.545 0.011 88);
+  --terminal: oklch(0.128 0.008 88);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-moss: var(--moss);
+  --color-moss-deep: var(--moss-deep);
+  --color-honey: var(--honey);
+  --color-oxide: var(--oxide);
+  --color-dim: var(--dim);
+  --color-terminal: var(--terminal);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-display: 'Bricolage Grotesque Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: 'cv11', 'ss01';
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+  ::selection {
+    background: oklch(0.782 0.106 146 / 25%);
+  }
+  :focus-visible {
+    outline: 2px solid var(--moss);
+    outline-offset: 3px;
+    border-radius: 3px;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.028em;
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+}
+
+@layer utilities {
+  /* Film grain. Kills the flat-vector look that dark UIs fall into —
+     the page should feel like a surface, not a slide. */
+  .grain::after {
+    content: '';
+    position: fixed;
+    inset: -50%;
+    pointer-events: none;
+    z-index: 60;
+    opacity: 0.032;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Hairline top highlight — how a real raised surface catches light. */
+  .lit {
+    box-shadow:
+      inset 0 1px 0 0 oklch(1 0 0 / 7%),
+      0 1px 2px oklch(0 0 0 / 30%),
+      0 18px 48px -24px oklch(0 0 0 / 70%);
+  }
+
+  .term-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(1 0 0 / 14%) transparent;
+  }
+  .term-scroll::-webkit-scrollbar {
+    height: 8px;
+  }
+  .term-scroll::-webkit-scrollbar-thumb {
+    background: oklch(1 0 0 / 14%);
+    border-radius: 999px;
+  }
+  .term-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
