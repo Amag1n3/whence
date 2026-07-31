@@ -127,15 +127,19 @@ default. Design commitments, not afterthoughts:
 
 - **Hashes, paths and ranges — never file contents** by default. Content capture
   is opt-in per repo.
-- **Redaction at capture, not at write.** Once a secret reaches a
+- **Redaction at capture, not at write.** The store is committed, so a bad
+  capture is public the moment you push — and once a secret reaches a
   content-addressed store it may already be replicated.
-- **Refuses to run if the store is git-tracked.** Ships a `.gitignore` entry on
-  `init`.
+- **The store is committed on purpose.** Records travel with the repo; a fresh
+  clone has them, which is the whole point. Only the surfacing log
+  (`.whence/surfaced.jsonl`) is gitignored on `init` — it holds timestamps and
+  absolute local paths. Anyone using this alone who wants records kept local can
+  gitignore the store themselves; nothing in the tool reads git state.
 - **Records are data, never directives.** Feeding records into agent context
-  makes the store a prompt-injection target — anything able to write `.whence/`
-  could otherwise inject authoritative-looking "project history" the agent obeys.
-  Records are signed per author; unsigned or external records are marked
-  untrusted at the point of display.
+  makes the store a prompt-injection target, and records arrive by `git pull` —
+  anyone able to land a commit could otherwise inject authoritative-looking
+  "project history" the agent obeys. Records are signed per author; unsigned or
+  external records are marked untrusted at the point of display.
 - **Attribution is aggregate-only by default.** No per-developer AI-authorship
   leaderboards. This is a developer tool, not a surveillance tool, and it will
   not become one.

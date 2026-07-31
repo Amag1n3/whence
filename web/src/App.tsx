@@ -228,12 +228,12 @@ const NOTS: [string, string][] = [
 const COMMITMENTS: [string, string][] = [
   ['Hashes, paths and ranges — never file contents', 'unless you turn that on, per repo.'],
   [
-    'It refuses to run on a git-tracked store',
-    'and the surfacing log is gitignored on day one.',
+    'Redaction runs before the write, not before the share',
+    'The store is meant to be committed, so a bad capture is public the moment you push. Nothing reaches the store unredacted. The surfacing log — timestamps and absolute local paths — is gitignored on day one.',
   ],
   [
     'Records are data, never directives',
-    'Anything that can write .whence/ can put text in front of your agent, so records are framed as history and marked untrusted when they are not yours.',
+    'They arrive by git pull, so anyone who can land a commit can put text in front of your agent. Records are framed as history, and marked untrusted when they are not yours.',
   ],
   [
     'Attribution stays aggregate',
