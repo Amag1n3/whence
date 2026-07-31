@@ -7,11 +7,11 @@
 > [!NOTE]
 > **Status: surfacing and anchoring work. Capture does not.**
 >
-> Real and tested: `why <file>:<line>`, the `PreToolUse` hook, content-hash
+> Real and tested: `whence <file>:<line>`, the `PreToolUse` hook, content-hash
 > anchoring with drifted / weak / orphaned states, evidence pointers that anchor
-> and rot independently of the record, `why check` as a CI gate, human-vs-agent
-> authorship with a confirmation step, a committed retraction log, `why add`,
-> `why rm`, `why confirm`, and `why backfill` — which harvests decisions already
+> and rot independently of the record, `whence check` as a CI gate, human-vs-agent
+> authorship with a confirmation step, a committed retraction log, `whence add`,
+> `whence rm`, `whence confirm`, and `whence backfill` — which harvests decisions already
 > written down as `ponytail:` comments, so a store is non-empty without anyone
 > retyping anything.
 >
@@ -49,7 +49,7 @@ about, and puts it back in front of the next agent before it edits.
 ## What it does
 
 ```console
-$ why src/auth/session.go:142
+$ whence src/auth/session.go:142
 
   ● 2026-07-27 · code review, finding B5 · confidence 0.90
     Never write shared session keys from this flow — namespace all three.
@@ -64,7 +64,7 @@ That record was written about line 142 and answers for line 147, because the
 code moved and the anchor followed it. When it stops following, it says so:
 
 ```console
-$ why src/auth/session.go
+$ whence src/auth/session.go
 
   ● 2026-07-27 · code review, finding B5 · confidence 0.00
     Never write shared session keys from this flow — namespace all three.
@@ -75,7 +75,7 @@ The same record reaches your coding agent through a `PreToolUse` hook *before* i
 edits, so it doesn't reintroduce the bug. And in CI:
 
 ```console
-$ why check --base origin/main
+$ whence check --base origin/main
 
   ! src/auth/session.go:145 — touches record [4f2a] (2026-07-27)
     Never write shared session keys from this flow — namespace all three.
@@ -85,7 +85,7 @@ $ why check --base origin/main
   ✗ src/auth/session.go — record [9c1b] lost its anchor in this change
     it anchored at 88-94 before this diff; nothing matches now
     the decision is still on record; the code it described is gone.
-    re-anchor it with `why add`, or delete it deliberately.
+    re-anchor it with `whence add`, or delete it deliberately.
 
   2 record(s) to confirm. exit 1
 ```
@@ -103,6 +103,115 @@ A record introduced by the same diff is not reported. Otherwise every pull
 request that records a decision fails its own gate, which is how a team learns to
 switch the gate off.
 
+## Install
+
+```console
+$ git clone https://github.com/Amag1n3/whence && cd whence
+$ go build -o whence .
+$ mv whence ~/.local/bin/                        # anywhere on $PATH
+$ ln -s ~/.local/bin/whence ~/.local/bin/why     # optional short form
+```
+
+Go 1.22+. `go install github.com/Amag1n3/whence@latest` will work once the
+package moves to a `cmd/whence/` layout; until then, build it.
+
+### One note about zsh and ksh
+
+**zsh and ksh have a `whence` builtin**, and builtins take precedence over
+`$PATH`. Those two shells — and only those two — need one line in your
+`~/.zshrc` or `~/.kshrc`:
+
+```sh
+alias whence='command whence'
+```
+
+Aliases are resolved before builtins, so that is the whole fix. `command whence`
+is also how you reach the binary in a one-off without the alias.
+
+If you use zsh's `whence` builtin and would rather not shadow it, the `why`
+symlink above runs the same binary under a name nothing competes for. **Every
+example in this README works with either name.**
+
+bash, fish, nushell and every non-interactive context — hooks, CI, scripts —
+need nothing. They have no such builtin.
+
+### Wire up the hook
+
+This is the part that matters. Without it `whence` is a lookup tool you have to
+remember to run; with it, records reach the agent before it edits.
+
+In `~/.claude/settings.json` (all projects) or `.claude/settings.json` (this repo
+only):
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 5,
+            "command": "/absolute/path/to/whence hook pre"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Use an absolute path.** Hooks do not reliably inherit the `$PATH` from your
+shell profile, and a hook that cannot find its binary fails silently — which is
+also how a working hook with nothing to say behaves, so you would never notice.
+`command -v whence` gives you the path to paste. The builtin is not in play here
+— hooks are not your interactive shell, so no alias is needed.
+
+`timeout: 5` is belt-and-braces. The hook measures 6.3ms on a warm store, and it
+exits 0 having printed nothing on every error path, so a broken `whence` costs you
+a missing record and nothing else. Restart Claude Code after editing settings.
+
+Verify it fired: `.whence/surfaced.jsonl` gains a line each time records are put
+in front of an agent.
+
+### Get a non-empty store
+
+A store with no records is a tool that does nothing, so start by harvesting what
+is already written down:
+
+```console
+$ whence backfill              # every `ponytail:` comment under the current directory
+$ whence log                   # what you now have
+```
+
+Then add them as you go, at the moment you make the call:
+
+```console
+$ whence add src/auth/session.go:142-148 \
+    -d "Namespace all three session keys to CHECKOUT_*." \
+    -w "The staff dashboard reads them on the same origin." \
+    -e src/dashboard/session.go:40-44
+```
+
+Commit `.whence/records.json`. That is the point — records travel with the repo.
+
+### Gate CI on it
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0   # check reads the BASE revision of the store and of cited files
+- uses: actions/setup-go@v5
+  with: { go-version: '1.22' }
+- run: go build -o whence . && ./whence check -base origin/${{ github.base_ref }}
+```
+
+Exit 1 means recorded decisions cover the lines this pull request changes. It is
+not a verdict on the change — go and confirm each, then re-run. See
+[`.github/workflows/whence.yml`](.github/workflows/whence.yml), which is this
+repo gating on itself.
+
 ## How it works
 
 1. **Capture.** Subscribes to your agent's hooks (`PostToolUse`, `Stop`, …) and
@@ -110,15 +219,16 @@ switch the gate off.
    anything is written.
 2. **Anchor.** Binds each record to a file, a line range, a content hash and a
    tree-sitter AST path — so it survives reformatting, drift and most refactors.
-3. **Surface.** `why <file>:<line>` from the terminal, the same records injected
-   into a coding agent's context before it edits, and `why check` as a CI gate.
+3. **Surface.** `whence <file>:<line>` from the terminal, the same records injected
+   into a coding agent's context before it edits, and `whence check` as a CI gate.
 
 Records live in `.whence/records.json`, found by walking up from the file the way
 git finds `.git` — so a session rooted in one repo still resolves records for a
 file edited in a sibling repo.
 
-> The project is **whence**; the binary is **`why`**. `whence` is a zsh and ksh
-> builtin, and builtins take precedence over `$PATH`.
+> The project, the repo, the binary and the domain are all **whence**. zsh and
+> ksh shadow it with a builtin of the same name — [one line of shell rc
+> fixes that](#one-note-about-zsh-and-ksh).
 
 ### Anchoring is the hard part
 
@@ -145,7 +255,7 @@ So a record can carry **evidence**: pointers to things checkable without consult
 another record.
 
 ```console
-$ why add session.go:2-4 -d "Namespace all three session keys to CHECKOUT_*." \
+$ whence add session.go:2-4 -d "Namespace all three session keys to CHECKOUT_*." \
     -w "The staff dashboard reads them on the same origin." \
     -e dashboard.go:2-3 -e "go test ./auth/..."
 ```
@@ -155,7 +265,7 @@ pointer and never a copied snippet — a copy goes stale silently, which is the
 disease. So when the cited code is deleted, whence says so on its own:
 
 ```console
-$ why check --base origin/main
+$ whence check --base origin/main
 
   ✗ dashboard.go:2-3 — this change removes the evidence for record [390a35]
     the record still anchors to session.go:2-4 and reads as current
@@ -204,7 +314,7 @@ Wikipedia's rule is that content must be *verifiable*, with no requirement that
 anyone verified it when it went in. That gap is what circular citation exploits.
 This closes it for the only records that have it.
 
-`why log` ends with the number that matters:
+`whence log` ends with the number that matters:
 
 ```
 9 records · 9 human, 0 agent · 0 unchecked · 0 orphaned
@@ -214,7 +324,7 @@ Self-feeding stores degrade, and the rare cases go first — which here are exac
 the records that justify the tool. A share trending toward agent-written and
 unchecked is the warning, and it shows up long before the damage.
 
-`why rm` writes to a committed `.whence/retracted.jsonl` rather than deleting
+`whence rm` writes to a committed `.whence/retracted.jsonl` rather than deleting
 quietly, because a store full of confident nonsense produces *more* CI hits, not
 fewer. The count of times a record turned out to be wrong is the only number that
 sees that failure.
@@ -230,9 +340,9 @@ sees that failure.
 
 | Phase | Scope |
 |---|---|
-| **0** | ✅ Claude Code `PreToolUse` hook → records → `why <file>:<line>` and `why log`. |
-| **1** | ✅ Content-hash anchoring, confidence decay, orphan surfacing, evidence pointers, `why add`, `why rm`, and backfill from `ponytail:` comments. Still open: backfill from git history and ADR/review docs, AST paths, capture, record signing. |
-| **2** | ✅ `why check` as a CI gate, comparing a diff against records. |
+| **0** | ✅ Claude Code `PreToolUse` hook → records → `whence <file>:<line>` and `whence log`. |
+| **1** | ✅ Content-hash anchoring, confidence decay, orphan surfacing, evidence pointers, `whence add`, `whence rm`, and backfill from `ponytail:` comments. Still open: backfill from git history and ADR/review docs, AST paths, capture, record signing. |
+| **2** | ✅ `whence check` as a CI gate, comparing a diff against records. |
 | **3** | End-to-end encrypted team sync + dashboard: AI-authorship attribution, per-commit cost, violation history. |
 
 Phase 0 has to be useful on its own. Backfill in Phase 1 isn't polish — a
@@ -279,4 +389,4 @@ The counter ships in Phase 0.
 
 ## License
 
-TBD — will be permissive (MIT or Apache-2.0) for the CLI.
+[MIT](LICENSE).

@@ -1,9 +1,11 @@
-// Command why surfaces recorded decisions about code, to the terminal and to AI
-// coding agents, before that code is modified again.
+// Command whence surfaces recorded decisions about code, to the terminal and to
+// AI coding agents, before that code is modified again.
 //
-// The project is called whence; the binary is `why` because `whence` is a zsh
-// and ksh builtin and shell builtins take precedence over $PATH. `why
-// src/auth.go:42` also reads better.
+// The binary is `whence`, the same as the project, the repo and the domain. One
+// name is worth a setup step: zsh and ksh have a `whence` builtin that shadows
+// anything on $PATH, so those two shells need `alias whence='command whence'`.
+// A `why` symlink ships alongside for anyone who would rather not shadow a
+// builtin they use. Every other shell needs nothing.
 //
 // Phase 0: records are written by hand. See "01 - Phase 0 Plan" in the vault
 // for why surfacing is built before capture.
@@ -60,22 +62,26 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `why — remember why your code is the way it is
+	fmt.Fprint(os.Stderr, `whence — remember why your code is the way it is
 
-  why <file>[:<line>]   show recorded decisions for a file, or one line
-  why log               list every record in the nearest store
-  why add <file>:<a>-<b> -d "decision" -w "why" [-s source] [-e evidence]
-                        record a decision and anchor it to those lines.
-                        -e is repeatable and takes anything checkable: a
-                        file:line (anchored, so its rot is detectable), a
-                        command, a commit, a link. Never another record.
-  why backfill [dir]    harvest ponytail: comments already in the code
-  why rm <id> [-w why]  retract one record, logging why it was wrong
-  why confirm <id>      record that a human has checked an agent-written record
-  why check [-base rev] report the records covering a diff; exit 1 if any
-  why hook pre          (called by Claude Code; reads a hook payload on stdin)
+  whence <file>[:<line>]    show recorded decisions for a file, or one line
+  whence log                list every record in the nearest store
+  whence add <file>:<a>-<b> -d "decision" -w "why" [-s source] [-e evidence]
+                            record a decision and anchor it to those lines.
+                            -e is repeatable and takes anything checkable: a
+                            file:line (anchored, so its rot is detectable), a
+                            command, a commit, a link. Never another record.
+  whence backfill [dir]     harvest ponytail: comments already in the code
+  whence rm <id> [-w why]   retract one record, logging why it was wrong
+  whence confirm <id>       record that a human has checked an agent-written record
+  whence check [-base rev]  report the records covering a diff; exit 1 if any
+  whence hook pre           (called by Claude Code; reads a hook payload on stdin)
 
 Records live in .whence/records.json, found by walking up from the file.
+
+zsh and ksh have a "whence" builtin that shadows this one. Add
+  alias whence='command whence'
+to your shell rc, or use the "why" symlink installed alongside it.
 `)
 }
 

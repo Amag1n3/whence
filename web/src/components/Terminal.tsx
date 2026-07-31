@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { motion, useInView, useReducedMotion } from 'motion/react'
 import { cn } from '@/lib/utils'
 
-const CMD = 'why src/auth/session.go:142'
+const CMD = 'whence src/auth/session.go:142'
 
 type Out = { text: string; tone?: 'ochre' | 'dim' | 'plain' }
 
