@@ -2,6 +2,8 @@
 
 **Git remembers what changed. `whence` remembers why — and tells your AI agent before it changes it back.**
 
+[Install](https://whence.fyi/install) · [Command reference](https://whence.fyi/docs) · [Questions](https://whence.fyi/faq)
+
 ---
 
 > [!NOTE]
@@ -129,6 +131,11 @@ request that records a decision fails its own gate, which is how a team learns t
 switch the gate off.
 
 ## Install
+
+> The same instructions live at **[whence.fyi/install](https://whence.fyi/install)**,
+> in a form that is easier to link someone to. This section and that page are
+> written from the same facts and will drift apart if only one gets edited —
+> change both, or change this one and regenerate the other from it.
 
 ```console
 $ go install github.com/Amag1n3/whence@latest

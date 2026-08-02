@@ -6,17 +6,31 @@ import { cn } from '@/lib/utils'
 export const REPO = 'https://github.com/Amag1n3/whence'
 export const SHELL = 'mx-auto w-full max-w-[1280px] px-6 sm:px-10'
 
-/* Header and footer live here rather than in App because there are two pages
-   now, and chrome that exists twice drifts. The landing page scrolls to its own
-   top; /faq navigates home — so the logo takes a handler rather than assuming. */
+/* Header and footer live here rather than in App because there are four pages
+   now, and chrome that exists four times drifts. The landing page scrolls to its
+   own top; every other page navigates home — so the logo takes a handler rather
+   than assuming. */
+
+/** One list, rendered by both header and footer, so a page added to one cannot
+ *  go missing from the other. That drift is exactly why this file exists. */
+const NAV: { href: string; label: string; key: PageKey }[] = [
+  { href: '/install', label: 'install', key: 'install' },
+  { href: '/docs', label: 'docs', key: 'docs' },
+  { href: '/faq', label: 'questions', key: 'faq' },
+]
+
+export type PageKey = 'install' | 'docs' | 'faq'
 
 export function Header({
   onLogo,
   railed = false,
+  current,
 }: {
   onLogo?: (e: MouseEvent<HTMLAnchorElement>) => void
   /** Offset for the strata rail, which only the landing page has. */
   railed?: boolean
+  /** Which page is being rendered, for aria-current. Absent on the landing page. */
+  current?: PageKey
 }) {
   return (
     <header
@@ -36,15 +50,24 @@ export function Header({
         {/* min-h-6 on every link, not padding on the row: WCAG 2.2 SC 2.5.8 wants
             a 24px target, and a 12.5px text node gives about 16. These are nav
             items in a row rather than links inside a sentence, so the inline
-            exception does not cover them. */}
-        <nav className="ml-auto flex items-center gap-6 font-mono text-[12.5px] text-muted-foreground">
-          <a
-            href={onLogo ? '/faq' : '/'}
-            className="inline-flex min-h-6 items-center transition-colors hover:text-silt"
-            aria-current={onLogo ? undefined : 'page'}
-          >
-            {onLogo ? 'questions' : 'home'}
-          </a>
+            exception does not cover them.
+            gap-x-5 with a wrap allowance: four items plus the logo overflow a
+            360px viewport at gap-6, and a nav that clips is worse than one that
+            takes two rows. */}
+        <nav className="ml-auto flex flex-wrap items-center justify-end gap-x-5 gap-y-1 font-mono text-[12.5px] text-muted-foreground">
+          {NAV.map((item) => (
+            <a
+              key={item.key}
+              href={item.href}
+              className={cn(
+                'inline-flex min-h-6 items-center transition-colors hover:text-silt',
+                current === item.key && 'text-silt',
+              )}
+              aria-current={current === item.key ? 'page' : undefined}
+            >
+              {item.label}
+            </a>
+          ))}
           <a
             href={REPO}
             className="inline-flex min-h-6 items-center gap-0.5 transition-colors hover:text-silt"
@@ -69,17 +92,20 @@ export function Footer() {
         <span className="text-silt/70">
           <span className="text-ochre">●</span> whence
         </span>
+        {NAV.map((item) => (
+          <a
+            key={item.key}
+            href={item.href}
+            className="inline-flex min-h-6 items-center transition-colors hover:text-silt"
+          >
+            {item.label}
+          </a>
+        ))}
         <a
           href={REPO}
           className="inline-flex min-h-6 items-center transition-colors hover:text-silt"
         >
           github
-        </a>
-        <a
-          href="/faq"
-          className="inline-flex min-h-6 items-center transition-colors hover:text-silt"
-        >
-          questions
         </a>
         <a
           href="mailto:amogh@whence.fyi"

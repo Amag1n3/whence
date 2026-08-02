@@ -287,9 +287,21 @@ from an ordinary card.
 
 ## Components
 
-- **`Layer`** — the section primitive. Depth marker, eyebrow, title, optional
-  lede, then children. Every top-level section on the site is a `Layer`; new
-  sections must use it rather than hand-rolling a heading.
+- **`Layer`** — the section primitive **of the landing page**. Depth marker,
+  eyebrow, title, optional lede, then children. Every top-level section of the
+  core sample is a `Layer`; new landing sections must use it rather than
+  hand-rolling a heading.
+- **`DocPage` / `DocSection`** — the shell for the three reference pages
+  (`/install`, `/docs`, `/faq`). Hero, a sticky contents index, numbered
+  sections. **Deliberately not `Layer` and deliberately no strata rail:** depth-
+  is-time belongs to the core-sample conceit, and reference material is not a
+  layer of anything. The contents index is the rail's analogue — same position,
+  same monospace, different claim. A fourth reference page uses this; it does not
+  hand-roll the layout again, which is the mistake `Chrome` and this component
+  both exist to prevent.
+- **`Code`** — code and terminal blocks, shared by all four pages. Note it ships
+  at `rounded-md`, not the `xl` this file names for terminal surfaces. The code
+  is right and this line is the record of the discrepancy.
 - **`Reveal`** — scroll-in, `opacity 0 → 1` with an 18px rise, `once: true`.
   A page that re-animates on every scroll-by is a page that fights the reader.
   It already handles `prefers-reduced-motion` internally, so callers must not add
@@ -307,8 +319,11 @@ from an ordinary card.
 
 **Do**
 
-- Reuse `Layer`, `Reveal`, and the shell constant. New sections that hand-roll
-  their own spacing drift immediately.
+- Reuse `Layer` (landing), `DocPage` (reference pages), `Reveal`, and the shell
+  constant. New sections that hand-roll their own spacing drift immediately.
+- Add a page to the `NAV` list in `Chrome.tsx` and to `rollupOptions.input`.
+  Both, or the page is unreachable from one of header/footer, or not built at
+  all. The single `NAV` array is why the header and footer cannot disagree.
 - Keep the rail list and the page order identical.
 - Let the ugly parts stay ugly and honest. The falsification panel — the one that
   says the project gets archived if a number stays zero — is the most persuasive

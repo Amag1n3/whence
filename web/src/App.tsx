@@ -2,6 +2,7 @@ import { ArrowUpRight, Check, Minus } from 'lucide-react'
 import type { MouseEvent, ReactNode } from 'react'
 
 import { Reveal } from '@/components/Reveal'
+import { Code } from '@/components/Code'
 import { Terminal } from '@/components/Terminal'
 import { DriftDemo } from '@/components/DriftDemo'
 import { Gate } from '@/components/Gate'
@@ -20,7 +21,7 @@ const STRATA: Stratum[] = [
   { id: 'how', label: 'how it works' },
   { id: 'anchoring', label: 'anchoring' },
   { id: 'gate', label: 'the gate' },
-  { id: 'start', label: 'quickstart' },
+  { id: 'start', label: 'start' },
   { id: 'scope', label: 'what it isn’t' },
   { id: 'handling', label: 'your code' },
   { id: 'falsification', label: 'the kill number' },
@@ -128,23 +129,6 @@ function TheGap() {
         </Reveal>
       </div>
     </section>
-  )
-}
-
-function Code({ children, caption }: { children: string; caption?: string }) {
-  return (
-    <div className="lit overflow-hidden rounded-md border border-white/10 bg-terminal">
-      {caption && (
-        <div className="border-b border-white/[0.07] px-4 py-2 font-mono text-[11px] text-dim">
-          {caption}
-        </div>
-      )}
-      <div className="term-scroll overflow-x-auto px-4 py-3.5">
-        <pre className="min-w-max font-mono text-[12.5px] leading-[1.75] text-silt/85">
-          {children}
-        </pre>
-      </div>
-    </div>
   )
 }
 
@@ -423,80 +407,52 @@ export default function App() {
             <Gate />
           </Layer>
 
-          {/* --------------------------------------------------- quickstart */}
+          {/* --------------------------------------------------------- start */}
+          {/* Two commands and a link, not a walkthrough. This layer used to
+              carry four steps, and step 04 taught the hand-edited settings.json
+              the plugin exists to remove — because the plugin shipped after this
+              section was written and nothing pointed back at it. Install
+              instructions in two places drift, and the copy nobody maintains is
+              the one on the page everybody lands on. */}
           <Layer
             id="start"
             depth="07"
-            eyebrow="quickstart"
-            title="Try it in five minutes"
-            lede="Four steps, about five minutes. You decide what gets recorded; the tool works out how to make it survive."
+            eyebrow="start"
+            title="Two commands"
+            lede="The binary, then the plugin that puts it in front of your agent. Everything else — the shell builtin, wiring the hook by hand, gating CI — is on the install page."
           >
             <div className="grid gap-x-14 gap-y-10 xl:grid-cols-2">
               <Reveal>
-                <h3 className="mb-3 text-[16px]">
-                  <span className="mr-2.5 font-mono text-[11.5px] text-dim">01</span>
-                  Install it
-                </h3>
-                <Code>{`go install github.com/Amag1n3/whence@latest
-
-# zsh and ksh only — both shadow it with a builtin
-echo "alias whence='command whence'" >> ~/.zshrc`}</Code>
-                <p className="mt-3 max-w-[56ch] text-[14.5px] leading-[1.65] text-muted-foreground">
-                  <b className="text-silt">whence</b> everywhere — the project, the repo,
-                  the binary. zsh and ksh are the one exception: both ship a{' '}
-                  <code className="font-mono text-silt">whence</code> builtin that beats{' '}
-                  <code className="font-mono">$PATH</code>, and an alias is resolved before
-                  a builtin, so that one line is the whole fix. bash, fish and every hook
-                  or CI job need nothing.
+                <Code>{`go install github.com/Amag1n3/whence@latest`}</Code>
+                <div className="mt-3.5">
+                  <Code caption="in Claude Code">{`/plugin marketplace add Amag1n3/whence`}</Code>
+                </div>
+                <p className="mt-4 max-w-[56ch] text-[14.5px] leading-[1.65] text-muted-foreground">
+                  Restart, then <code className="font-mono text-silt">/whence:setup</code>{' '}
+                  checks the wiring and tells you which link is missing. Records now reach
+                  Claude Code before it edits — as history to be aware of, never as
+                  instructions to follow.
                 </p>
               </Reveal>
 
               <Reveal delay={0.05}>
-                <h3 className="mb-3 text-[16px]">
-                  <span className="mr-2.5 font-mono text-[11.5px] text-dim">02</span>
-                  Record a decision
-                </h3>
-                <Code>{`whence add src/auth/session.go:142-148 \\
-  -d "Namespace all three session keys to CHECKOUT_*." \\
-  -w "The admin dashboard reads them on the same origin." \\
-  -e dashboard/Header.tsx:88-94`}</Code>
-                <p className="mt-3 max-w-[56ch] text-[14.5px] leading-[1.65] text-muted-foreground">
-                  Writes <code className="font-mono text-silt">.whence/records.jsonl</code> —
-                  commit it, that is the point. The line hashes that let the record survive
-                  the code moving are computed here; hand-writing the file gets you a line
-                  number and nothing that follows it. <code className="font-mono">-e</code>{' '}
-                  is optional and repeatable.
+                <p className="max-w-[52ch] text-[14.5px] leading-[1.65] text-muted-foreground">
+                  <b className="text-silt">zsh and ksh need one more line</b> — both ship a{' '}
+                  <code className="font-mono text-silt">whence</code> builtin that beats{' '}
+                  <code className="font-mono">$PATH</code>. bash, fish, and every hook or
+                  CI job need nothing.
                 </p>
-              </Reveal>
-
-              <Reveal delay={0.1}>
-                <h3 className="mb-3 text-[16px]">
-                  <span className="mr-2.5 font-mono text-[11.5px] text-dim">03</span>
-                  Read it back
-                </h3>
-                <Code>{`whence src/auth/session.go:145   # one line
-whence log                       # everything in the nearest store`}</Code>
-              </Reveal>
-
-              <Reveal delay={0.15}>
-                <h3 className="mb-3 text-[16px]">
-                  <span className="mr-2.5 font-mono text-[11.5px] text-dim">04</span>
-                  Put it in front of your agent
-                </h3>
-                <Code caption=".claude/settings.json">{`{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [{ "type": "command", "command": "/abs/path/to/whence hook pre" }]
-      }
-    ]
-  }
-}`}</Code>
-                <p className="mt-3 max-w-[56ch] text-[14.5px] leading-[1.65] text-muted-foreground">
-                  Claude Code now sees the record before it touches the file — passed as
-                  history to be aware of, never as instructions to follow.
-                </p>
+                <div className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-3">
+                  <Button asChild>
+                    <a href="/install">Full install guide</a>
+                  </Button>
+                  <a
+                    href="/docs"
+                    className="inline-flex min-h-6 items-center gap-1 font-mono text-[12.5px] text-muted-foreground transition-colors hover:text-silt"
+                  >
+                    all ten commands <ArrowUpRight className="size-3.5" />
+                  </a>
+                </div>
               </Reveal>
             </div>
           </Layer>
