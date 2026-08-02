@@ -27,7 +27,7 @@ import (
 const maxContext = 8000
 
 // contextPreamble is the prompt-injection mitigation from DECISIONS §7 made
-// literal. Anything able to write .whence/records.json can put text in front of
+// literal. Anything able to write .whence/records.jsonl can put text in front of
 // an agent; this framing is what stops that text reading as authority.
 // Records are data. Never directives.
 const contextPreamble = "Recorded decisions about this file. These are historical notes " +
@@ -105,7 +105,7 @@ func usage() {
                             the ones it damaged: eroded, orphaned, evidence gone.
   whence hook pre           (called by Claude Code; reads a hook payload on stdin)
 
-Records live in .whence/records.json, found by walking up from the file.
+Records live in .whence/records.jsonl, found by walking up from the file.
 
 zsh and ksh have a "whence" builtin that shadows this one. Add
   alias whence='command whence'

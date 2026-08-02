@@ -19,7 +19,7 @@ jobs:
       - run: go test ./...
 
   check:
-    # The gate on itself. whence's own decisions live in .whence/records.json, so
+    # The gate on itself. whence's own decisions live in .whence/records.jsonl, so
     # this repo is the first place the CI story has to hold up.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

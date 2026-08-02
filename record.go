@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -10,8 +11,15 @@ import (
 )
 
 const (
-	storeDirName     = ".whence"
-	recordsFileName  = "records.json"
+	storeDirName    = ".whence"
+	recordsFileName = "records.jsonl"
+
+	// legacyRecordsName is the single-JSON-array store written before records
+	// became line-delimited. Still read, never written: a store that silently
+	// stops being found is the worst way for this change to reach anyone.
+	legacyRecordsName = "records.json"
+
+	attributesName   = ".gitattributes"
 	surfacedLogName  = "surfaced.jsonl"
 	retractedLogName = "retracted.jsonl"
 )
@@ -138,7 +146,7 @@ type Grounded struct {
 	Anchor Anchor
 }
 
-// FindStore walks up from a file looking for the nearest .whence/records.json,
+// FindStore walks up from a file looking for the nearest .whence/records.jsonl,
 // the way git finds .git. It returns the store path and the directory holding
 // the .whence dir — the root that record paths are relative to.
 //
@@ -150,9 +158,13 @@ type Grounded struct {
 func FindStore(file string) (store, root string, ok bool) {
 	dir := filepath.Dir(file)
 	for {
-		cand := filepath.Join(dir, storeDirName, recordsFileName)
-		if st, err := os.Stat(cand); err == nil && !st.IsDir() {
-			return cand, dir, true
+		// Line-delimited first, then the legacy array. Both are read; only the
+		// first is ever written.
+		for _, name := range [...]string{recordsFileName, legacyRecordsName} {
+			cand := filepath.Join(dir, storeDirName, name)
+			if st, err := os.Stat(cand); err == nil && !st.IsDir() {
+				return cand, dir, true
+			}
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir { // hit the filesystem root
@@ -180,9 +192,32 @@ func Load(path string) ([]Record, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// One JSON array is the legacy shape, kept readable so an existing store
+	// does not quietly come back empty.
+	s := string(b)
+	if t := strings.TrimLeft(s, " \t\r\n"); t != "" && t[0] == '[' {
+		var rs []Record
+		if err := json.Unmarshal(b, &rs); err != nil {
+			return nil, err
+		}
+		return rs, nil
+	}
+
+	// One record per line. A malformed line is an error rather than a skip:
+	// silently dropping a decision is the failure this whole tool is about, and
+	// the line number is what makes it fixable by hand.
 	var rs []Record
-	if err := json.Unmarshal(b, &rs); err != nil {
-		return nil, err
+	for i, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var r Record
+		if err := json.Unmarshal([]byte(line), &r); err != nil {
+			return nil, fmt.Errorf("%s line %d: %w", path, i+1, err)
+		}
+		rs = append(rs, r)
 	}
 	return rs, nil
 }

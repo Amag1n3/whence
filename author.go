@@ -465,9 +465,28 @@ func createStore() (store, root string, err error) {
 			return "", "", err
 		}
 	}
+	// Union merge, for the same reason and in the same place as the .gitignore
+	// above. The store is committed so that records travel with the repo (§14),
+	// which means it gets merged — and two people adding unrelated decisions on
+	// two branches both append at the end of the file, which is one region to
+	// git and therefore a conflict on every parallel add. A store that conflicts
+	// whenever two people use it is one a team stops writing to.
+	//
+	// Union takes both sides, which for an append-only log is simply correct.
+	// The cost is narrow and worth naming: a record EDITED on both branches —
+	// reanchor, confirm — survives twice, so one id shows up in `whence log`
+	// twice. Visible when it happens, rare because records are appended far more
+	// than they are changed, and cheaper than the alternative.
+	attr := filepath.Join(dir, attributesName)
+	if _, err := os.Stat(attr); os.IsNotExist(err) {
+		if err := os.WriteFile(attr, []byte(recordsFileName+" merge=union\n"), 0o644); err != nil {
+			return "", "", err
+		}
+	}
+	// An empty line-delimited store is an empty file, not "[]".
 	store = filepath.Join(dir, recordsFileName)
 	if _, err := os.Stat(store); os.IsNotExist(err) {
-		if err := os.WriteFile(store, []byte("[]\n"), 0o644); err != nil {
+		if err := os.WriteFile(store, nil, 0o644); err != nil {
 			return "", "", err
 		}
 	}
@@ -476,17 +495,33 @@ func createStore() (store, root string, err error) {
 
 // save writes the store back through a temp file and a rename.
 //
-// The store IS the product. A half-written records.json loses decisions
-// permanently, and this is the one place that rewrites the whole file, so the
-// atomic version costs two lines and removes the only data-loss path in the
-// tool.
+// The store IS the product. A half-written store loses decisions permanently,
+// and this is the one place that rewrites the whole file, so the atomic version
+// costs two lines and removes the only data-loss path in the tool.
+//
+// One record per line, compact, never indented. The store is committed and
+// therefore merged, and git merges lines — so the record has to BE the line. An
+// indented array put every record across a dozen lines and wrapped the whole
+// thing in brackets, which meant two people adding unrelated decisions on two
+// branches conflicted, and resolving it meant repairing JSON syntax by hand.
+// With the record on one line, and the union driver createStore writes, the same
+// merge takes both sides and needs nobody.
+//
+// A legacy array store is rewritten line-delimited on its first save, under its
+// old name. Renaming a committed file out from under someone is not this
+// function's call to make; Load reads either shape, so nothing breaks.
 func save(path string, rs []Record) error {
-	b, err := json.MarshalIndent(rs, "", "  ")
-	if err != nil {
-		return err
+	var b strings.Builder
+	for _, r := range rs {
+		line, err := json.Marshal(r)
+		if err != nil {
+			return err
+		}
+		b.Write(line)
+		b.WriteByte('\n')
 	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, append(b, '\n'), 0o644); err != nil {
+	if err := os.WriteFile(tmp, []byte(b.String()), 0o644); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)
