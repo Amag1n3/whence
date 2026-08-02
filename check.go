@@ -253,6 +253,11 @@ func report(f finding) {
 			fmt.Printf("    why: %s\n", f.r.Why)
 		}
 		fmt.Printf("    %s · %s\n", locate(Resolved{Record: f.r, Anchor: f.anchor}), f.anchor.State)
+		// Deliberately not pre-filled with the span above. That span is a
+		// best-match window, and a command you can paste without reading is a
+		// command that stores a guess as a certainty.
+		fmt.Printf("    if the rewrite kept the decision, re-point it with `why reanchor %s %s:<start>-<end>`.\n",
+			f.r.ID, f.r.File)
 		return
 	}
 	if f.lost {
@@ -263,7 +268,8 @@ func report(f finding) {
 			fmt.Printf("    why: %s\n", f.r.Why)
 		}
 		fmt.Printf("    the decision is still on record; the code it described is gone.\n")
-		fmt.Printf("    re-anchor it with `why add`, or delete it deliberately.\n")
+		fmt.Printf("    re-point it with `why reanchor %s %s:<start>-<end>`, or retract it deliberately.\n",
+			f.r.ID, f.r.File)
 		return
 	}
 	fmt.Printf("\n  ! %s:%s — touches record [%s] (%s)\n",

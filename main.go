@@ -56,6 +56,8 @@ func main() {
 		confirmCmd(os.Args[2:])
 	case "reground":
 		regroundCmd(os.Args[2:])
+	case "reanchor":
+		reanchorCmd(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -79,6 +81,11 @@ func usage() {
   whence reground <id> -e <ref> [-e ...]
                             re-point a record's evidence. Not a retraction: the
                             claim stands, only what backs it up has moved.
+  whence reanchor <id> <file>:<a>-<b>
+                            re-point a record at the lines it is about now, after
+                            the block it described was rewritten. Also not a
+                            retraction. You name the span: where a degraded
+                            record currently points is a guess, not an answer.
   whence check [-base rev]  report the records covering a diff; exit 1 if any
   whence hook pre           (called by Claude Code; reads a hook payload on stdin)
 

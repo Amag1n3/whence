@@ -345,6 +345,76 @@ func TestRegroundRepointsEvidenceWithoutRetracting(t *testing.T) {
 	}
 }
 
+// The same argument as reground, for the other half of a record. A block gets
+// rewritten in place, the record about it is still exactly right, and the only
+// fix used to be rm plus add — which files a live decision in the log that
+// counts records that turned out to be WRONG.
+func TestReanchorRepointsAClaimThatSurvivedARewrite(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	writeFile(t, dir, "session.go", block)
+
+	if _, _, err := add("session.go", 2, 4, "namespace session keys",
+		"the staff dashboard reads them", "code review", authorHuman, nil); err != nil {
+		t.Fatal(err)
+	}
+	store := filepath.Join(dir, storeDirName, recordsFileName)
+	rs, err := Load(store)
+	if err != nil || len(rs) != 1 {
+		t.Fatalf("expected one record, got %d (%v)", len(rs), err)
+	}
+	id, was := rs[0].ID, rs[0].Lines
+
+	// One line of the block is rewritten. The decision — namespace all three —
+	// is untouched by that, and still true about the code that replaced it.
+	rewritten := append([]string(nil), block...)
+	rewritten[3] = `	store.Set("CHECKOUT_role", roleOf(s))`
+	writeFile(t, dir, "session.go", rewritten)
+
+	if a := resolveAnchor(fileLines(filepath.Join(dir, "session.go")), rs[0]); a.State != StateWeak {
+		t.Fatalf("the rewrite should leave the record weak, got %q — this test is not testing what it thinks", a.State)
+	}
+
+	got, _, err := reanchor(id, "session.go:2-4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Anchor.State != StateExact {
+		t.Errorf("a re-pointed record must anchor exactly to the code it was just read from, got %q", got.Anchor.State)
+	}
+	if got.ID != id {
+		t.Errorf("the record keeps its identity, got %q want %q", got.ID, id)
+	}
+	if _, err := os.Stat(filepath.Join(dir, storeDirName, retractedLogName)); err == nil {
+		t.Error("reanchoring wrote to the retraction log; that log counts records that were WRONG")
+	}
+
+	after, err := Load(store)
+	if err != nil || len(after) != 1 {
+		t.Fatalf("the record must still be there, got %d (%v)", len(after), err)
+	}
+	// Only the anchor moves. The recorded range is where the decision was made,
+	// and how far the record has travelled since is information.
+	if after[0].Start != 2 || after[0].End != 4 || after[0].Decision != "namespace session keys" {
+		t.Errorf("reanchor touched more than the anchor: %+v", after[0])
+	}
+	if sameSeq(after[0].Lines, was) {
+		t.Error("the hashes did not change, so nothing was re-pointed")
+	}
+
+	// The span is the human's, never inherited: a degraded record's window is a
+	// guess, and re-hashing a guess stores it as a certainty.
+	if _, _, err := reanchor(id, "session.go"); err == nil {
+		t.Error("reanchor must ask which lines the decision is about rather than infer them")
+	}
+	// A decision whose code moved to another file is a different record, not this
+	// one pointed sideways — its recorded range names lines in the old file.
+	writeFile(t, dir, "elsewhere.go", block)
+	if _, _, err := reanchor(id, "elsewhere.go:2-4"); err == nil {
+		t.Error("reanchor must refuse a span in another file")
+	}
+}
+
 // The citogenesis rule, enforced rather than documented: a record may never be
 // grounded in another record. That link is what lets one wrong record make the
 // next one look credible (DECISIONS §17).
