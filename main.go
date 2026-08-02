@@ -71,6 +71,8 @@ func main() {
 		regroundCmd(os.Args[2:])
 	case "reanchor":
 		reanchorCmd(os.Args[2:])
+	case "capture":
+		captureCmd(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -103,6 +105,11 @@ func usage() {
                             record currently points is a guess, not an answer.
   whence check [-base rev]  report the decisions covering a diff. Exit 1 only for
                             the ones it damaged: eroded, orphaned, evidence gone.
+  whence capture [file]     read a finished Claude Code session and show each edit
+                            beside what was said before it. Reads the newest
+                            session for this directory by default. Writes nothing:
+                            whether a stated reason is the real one is the open
+                            question, so a human reads these and decides.
   whence hook pre           (called by Claude Code; reads a hook payload on stdin)
 
 Records live in .whence/records.jsonl, found by walking up from the file.
