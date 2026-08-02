@@ -242,7 +242,7 @@ $ whence add src/auth/session.go:142-148 \
     -e src/dashboard/session.go:40-44
 ```
 
-Commit `.whence/records.json`. That is the point — records travel with the repo.
+Commit `.whence/records.jsonll`. That is the point — records travel with the repo.
 
 ### Gate CI on it
 
@@ -272,7 +272,7 @@ which is this repo gating on itself.
 3. **Surface.** `whence <file>:<line>` from the terminal, the same records injected
    into a coding agent's context before it edits, and `whence check` as a CI gate.
 
-Records live in `.whence/records.json`, found by walking up from the file the way
+Records live in `.whence/records.jsonll`, found by walking up from the file the way
 git finds `.git` — so a session rooted in one repo still resolves records for a
 file edited in a sibling repo.
 

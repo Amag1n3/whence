@@ -94,7 +94,7 @@ export function Terminal({ className }: { className?: string }) {
           </span>
           <span className="ml-auto flex items-center gap-1.5 font-mono text-[10.5px] text-silt/30">
             <span className="size-1.5 rounded-full bg-ochre/80" />
-            .whence/records.json
+            .whence/records.jsonl
           </span>
         </div>
 

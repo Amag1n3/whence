@@ -468,7 +468,7 @@ func TestEvidenceCannotCiteTheRecordStore(t *testing.T) {
 	chdir(t, dir)
 	writeFile(t, dir, "session.go", block)
 
-	for _, ref := range []string{".whence/records.json", ".whence/records.json:4-9"} {
+	for _, ref := range []string{".whence/records.jsonl", ".whence/records.jsonl:4-9"} {
 		if _, _, err := add("session.go", 2, 4, "circular", "", "manual", authorHuman, []string{ref}); err == nil {
 			t.Errorf("evidence %q cites the store and must be refused", ref)
 		}

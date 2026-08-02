@@ -7,6 +7,52 @@ import (
 	"testing"
 )
 
+// The store is committed, so it gets merged, and git merges lines — which is the
+// whole reason a record has to be exactly one line. The legacy array shape still
+// has to load, or upgrading whence would quietly empty somebody's decisions.
+func TestStoreReadsBothShapesAndWritesOneRecordPerLine(t *testing.T) {
+	dir := t.TempDir()
+
+	legacy := filepath.Join(dir, legacyRecordsName)
+	if err := os.WriteFile(legacy, []byte(`[
+  {"id":"a1","file":"x.go","line_start":1,"line_end":2,"decision":"one"},
+  {"id":"b2","file":"y.go","line_start":3,"line_end":4,"decision":"two"}
+]`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rs, err := Load(legacy)
+	if err != nil || len(rs) != 2 {
+		t.Fatalf("a legacy array store must still load, got %d (%v)", len(rs), err)
+	}
+
+	out := filepath.Join(dir, recordsFileName)
+	if err := save(out, rs); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lines := strings.Split(strings.TrimRight(string(b), "\n"), "\n"); len(lines) != 2 {
+		t.Errorf("one record per line is the point; got %d lines:\n%s", len(lines), b)
+	}
+
+	back, err := Load(out)
+	if err != nil || len(back) != 2 || back[0].ID != "a1" || back[1].Decision != "two" {
+		t.Fatalf("the round trip lost records: %+v (%v)", back, err)
+	}
+
+	// A malformed line is reported, never skipped. Silently dropping a decision
+	// is the failure this whole tool exists to prevent.
+	bad := filepath.Join(dir, "bad.jsonl")
+	if err := os.WriteFile(bad, []byte("{\"id\":\"a1\"}\nnot json\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(bad); err == nil {
+		t.Error("a malformed line must be an error, not a silent skip")
+	}
+}
+
 // The non-trivial logic in Phase 0 is store resolution, line-range overlap and
 // path normalisation. If any of them breaks, why silently shows the wrong
 // records or none at all — which is worse than showing nothing, because it

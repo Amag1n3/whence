@@ -485,7 +485,7 @@ echo "alias whence='command whence'" >> ~/.zshrc`}</Code>
   -w "The admin dashboard reads them on the same origin." \\
   -e dashboard/Header.tsx:88-94`}</Code>
                 <p className="mt-3 max-w-[56ch] text-[14.5px] leading-[1.65] text-muted-foreground">
-                  Writes <code className="font-mono text-silt">.whence/records.json</code> —
+                  Writes <code className="font-mono text-silt">.whence/records.jsonl</code> —
                   commit it, that is the point. The line hashes that let the record survive
                   the code moving are computed here; hand-writing the file gets you a line
                   number and nothing that follows it. <code className="font-mono">-e</code>{' '}
