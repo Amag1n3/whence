@@ -88,7 +88,9 @@ func usage() {
                             -e is repeatable and takes anything checkable: a
                             file:line (anchored, so its rot is detectable), a
                             command, a commit, a link. Never another record.
-  whence backfill [dir]     harvest ponytail: comments already in the code
+  whence backfill [dir]     harvest decisions already written in your comments.
+                            HACK:, WORKAROUND:, XXX:, GOTCHA:, ponytail: always;
+                            NOTE:, TODO:, FIXME:, WARNING:, CAVEAT: with a reason.
   whence rm <id> [-w why]   retract one record, logging why it was wrong
   whence confirm <id>       record that a human has checked an agent-written record
   whence reground <id> -e <ref> [-e ...]
@@ -99,7 +101,8 @@ func usage() {
                             the block it described was rewritten. Also not a
                             retraction. You name the span: where a degraded
                             record currently points is a guess, not an answer.
-  whence check [-base rev]  report the records covering a diff; exit 1 if any
+  whence check [-base rev]  report the decisions covering a diff. Exit 1 only for
+                            the ones it damaged: eroded, orphaned, evidence gone.
   whence hook pre           (called by Claude Code; reads a hook payload on stdin)
 
 Records live in .whence/records.json, found by walking up from the file.
