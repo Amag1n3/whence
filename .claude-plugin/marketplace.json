@@ -1,0 +1,26 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "whence",
+  "metadata": {
+    "description": "Git remembers what changed. whence remembers why — and tells your agent before it changes it back."
+  },
+  "owner": {
+    "name": "Amogh Tyagi",
+    "url": "https://github.com/Amag1n3"
+  },
+  "plugins": [
+    {
+      "name": "whence",
+      "description": "Injects recorded decisions about a file into your agent's context before it edits, via PreToolUse. Records are historical notes, never instructions.",
+      "version": "0.2.0",
+      "author": {
+        "name": "Amogh Tyagi",
+        "url": "https://github.com/Amag1n3"
+      },
+      "source": "./",
+      "category": "productivity",
+      "homepage": "https://whence.fyi",
+      "tags": ["decisions", "context", "hooks", "code-review", "go"]
+    }
+  ]
+}

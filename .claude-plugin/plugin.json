@@ -1,0 +1,11 @@
+{
+  "name": "whence",
+  "version": "0.2.0",
+  "description": "Surfaces the recorded reason a piece of code is the way it is, to your agent, before it edits that code.",
+  "author": {
+    "name": "Amogh Tyagi",
+    "url": "https://github.com/Amag1n3"
+  },
+  "homepage": "https://whence.fyi",
+  "hooks": "./hooks/hooks.json"
+}

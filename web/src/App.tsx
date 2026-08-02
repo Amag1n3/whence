@@ -1,5 +1,4 @@
 import { ArrowUpRight, Check, Minus } from 'lucide-react'
-import { Fragment } from 'react'
 import type { MouseEvent, ReactNode } from 'react'
 
 import { Reveal } from '@/components/Reveal'
@@ -7,18 +6,9 @@ import { Terminal } from '@/components/Terminal'
 import { DriftDemo } from '@/components/DriftDemo'
 import { Gate } from '@/components/Gate'
 import { StrataRail, type Stratum } from '@/components/StrataRail'
+import { Header, Footer, REPO, SHELL } from '@/components/Chrome'
 import { Button } from '@/components/ui/button'
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion'
-import { FAQ } from '@/content/faq'
 import { cn } from '@/lib/utils'
-
-const REPO = 'https://github.com/Amag1n3/whence'
-const SHELL = 'mx-auto w-full max-w-[1280px] px-6 sm:px-10'
 
 /* The core, top to bottom. Order here is the order on the page and in the
    rail — depth is the one thing both have to agree on. */
@@ -34,7 +24,6 @@ const STRATA: Stratum[] = [
   { id: 'scope', label: 'what it isn’t' },
   { id: 'handling', label: 'your code' },
   { id: 'falsification', label: 'the kill number' },
-  { id: 'faq', label: 'questions' },
 ]
 
 /** Scroll without writing a hash into the address bar. The href stays so it
@@ -50,28 +39,6 @@ const jump = (id: string) => (e: MouseEvent<HTMLAnchorElement>) => {
 }
 
 /* --------------------------------------------------------------- pieces */
-
-function Header() {
-  return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.06] bg-basin/75 backdrop-blur-xl lg:pl-14">
-      <div className={cn(SHELL, 'flex h-14 items-center')}>
-        <a
-          href="#surface"
-          onClick={jump('surface')}
-          className="font-mono text-[13.5px] font-medium tracking-tight"
-        >
-          <span className="text-ochre">●</span> whence
-        </a>
-        <a
-          href={REPO}
-          className="ml-auto flex items-center gap-0.5 font-mono text-[12.5px] text-muted-foreground transition-colors hover:text-silt"
-        >
-          github <ArrowUpRight className="size-3.5" />
-        </a>
-      </div>
-    </header>
-  )
-}
 
 /** A layer of the core. The header reads like a core log: depth marker,
  *  layer name, what it is. */
@@ -281,7 +248,7 @@ export default function App() {
   return (
     <div className="grain relative min-h-screen">
       <StrataRail strata={STRATA} onJump={scrollToId} />
-      <Header />
+      <Header onLogo={jump('surface')} railed />
 
       <div className="lg:pl-14">
         <main>
@@ -602,79 +569,29 @@ whence log                       # everything in the nearest store`}</Code>
             </div>
           </section>
 
-          {/* --------------------------------------------------------- faq */}
-          <Layer
-            id="faq"
-            depth="11"
-            eyebrow="questions"
-            title="Everything else, answered"
-            lede="Reference material, so it sits after the argument rather than on top of it. Where the answer is that something is not built or not settled, it says so."
-          >
-            <div className="grid gap-x-16 gap-y-10 lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start">
-              {FAQ.map((cluster, i) => (
-                <Fragment key={cluster.id}>
-                  <Reveal delay={0.02}>
-                    <p className="font-mono text-[11px] tracking-[0.2em] text-dim uppercase lg:sticky lg:top-24 lg:pt-5">
-                      {cluster.label}
-                    </p>
-                  </Reveal>
-                  <Reveal delay={0.04}>
-                    <Accordion
-                      type="multiple"
-                      /* Reference material, so several answers stay open at once.
-                         The first cluster opens on its first question — one row
-                         showing what an answer looks like, rather than a wall of
-                         closed headings the reader has to guess at. */
-                      defaultValue={i === 0 ? [`${cluster.id}-0`] : undefined}
-                      className="border-t border-white/[0.07]"
-                    >
-                      {cluster.questions.map((item, j) => (
-                        <AccordionItem key={item.q} value={`${cluster.id}-${j}`}>
-                          <AccordionTrigger>{item.q}</AccordionTrigger>
-                          <AccordionContent>{item.a}</AccordionContent>
-                        </AccordionItem>
-                      ))}
-                    </Accordion>
-                  </Reveal>
-                </Fragment>
-              ))}
+          {/* The one route off this page. A reader who has just been told what
+              would make the project stop is at peak "yes but —", and the answers
+              live somewhere else now. One line, no card, no button. */}
+          <section className="border-t border-white/[0.07]">
+            <div className={cn(SHELL, 'py-11')}>
+              <Reveal>
+                <p className="max-w-[56ch] text-[15.5px] leading-[1.7] text-muted-foreground">
+                  Sixty-one more answers — how records survive code moving, what capture
+                  does and does not do, what this reads off your machine —{' '}
+                  <a
+                    href="/faq"
+                    className="text-ochre underline-offset-4 transition-colors hover:underline"
+                  >
+                    on the questions page
+                  </a>
+                  .
+                </p>
+              </Reveal>
             </div>
-
-            <Reveal>
-              <p className="mt-14 max-w-[56ch] border-t border-white/[0.07] pt-7 text-[14.5px] leading-[1.7] text-muted-foreground">
-                Something not answered here, or answered wrongly?{' '}
-                <a
-                  href={REPO}
-                  className="text-ochre underline-offset-4 transition-colors hover:underline"
-                >
-                  Open an issue
-                </a>{' '}
-                — a question this page cannot answer is a gap in the argument, not a support
-                request.
-              </p>
-            </Reveal>
-          </Layer>
+          </section>
         </main>
 
-        <footer className="border-t border-white/[0.07]">
-          <div
-            className={cn(
-              SHELL,
-              'flex flex-wrap items-center gap-x-7 gap-y-2 py-9 font-mono text-[12.5px] text-dim',
-            )}
-          >
-            <span className="text-silt/70">
-              <span className="text-ochre">●</span> whence
-            </span>
-            <a href={REPO} className="transition-colors hover:text-silt">
-              github
-            </a>
-            <a href="mailto:amogh@whence.fyi" className="transition-colors hover:text-silt">
-              amogh@whence.fyi
-            </a>
-            <span className="sm:ml-auto">started 2026-07-31</span>
-          </div>
-        </footer>
+        <Footer />
       </div>
     </div>
   )

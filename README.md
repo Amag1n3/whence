@@ -171,8 +171,23 @@ need nothing. They have no such builtin.
 This is the part that matters. Without it `whence` is a lookup tool you have to
 remember to run; with it, records reach the agent before it edits.
 
-In `~/.claude/settings.json` (all projects) or `.claude/settings.json` (this repo
-only):
+**The short way — the Claude Code plugin:**
+
+```console
+/plugin marketplace add Amag1n3/whence
+/plugin install whence@whence
+```
+
+Restart Claude Code, then run `/whence:setup` to check the wiring. The plugin
+carries the hook configuration and finds the binary itself, looking at
+`$WHENCE_BIN`, then `$GOBIN`/`$GOPATH/bin`, then `~/.local/bin`, `/usr/local/bin`
+and `/opt/homebrew/bin`, then `$PATH`. It cannot install the binary for you —
+`go install` above is still step one — and if it finds nothing it stays silent
+rather than erroring on every edit.
+
+**The manual way**, if you would rather not install a plugin, or you are wiring
+up an agent that is not Claude Code. In `~/.claude/settings.json` (all projects)
+or `.claude/settings.json` (this repo only):
 
 ```json
 {

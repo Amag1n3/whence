@@ -22,7 +22,13 @@
   --ochre: oklch(0.762 0.118 68); /* primary — iron oxide */
   --verdigris: oklch(0.688 0.052 154); /* "works" only, never identity */
   --cinnabar: oklch(0.622 0.138 36); /* violation, orphaned, lost */
-  --dim: oklch(0.562 0.018 70);
+  /* L raised from 0.562 on 2026-08-03. dim carries eyebrows, depth markers and
+     the footer — all 11–12.5px, so all "normal text" under WCAG, needing 4.5:1.
+     At 0.562 it measured 4.24 on basin and 3.89 on sediment: the only token in
+     the palette that failed AA, and it failed everywhere it was used. 0.598 is
+     the minimum that clears 4.5 against sediment, the worst of the three
+     backgrounds, so it passes on all of them. Do not lower it back. */
+  --dim: oklch(0.598 0.018 70);
 
   --background: var(--basin);
   --foreground: var(--silt);
