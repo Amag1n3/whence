@@ -185,6 +185,51 @@ func TestHarvestMarkerSet(t *testing.T) {
 
 // Re-running backfill must not duplicate. It is the kind of command someone
 // runs twice because they are not sure whether the first one worked.
+// A note is admitted for giving a reason, so the reason has to reach the field
+// that means it. Found by running backfill on prometheus/prometheus, where a
+// one-sentence TODO qualified on "to avoid" and then stored an empty why.
+func TestBackfillSplitsAOneSentenceNoteAtItsReason(t *testing.T) {
+	for _, c := range []struct{ in, decision, why string }{
+		// The case from prometheus. Both halves, one sentence, no boundary.
+		{
+			"Change to 0 in the interface for set check to avoid pointer mangling",
+			"Change to 0 in the interface for set check",
+			"to avoid pointer mangling",
+		},
+		// A sentence boundary is the stronger signal and still wins.
+		{
+			"Limit concurrency here. Parallel tests exhaust mmaps.",
+			"Limit concurrency here.",
+			"Parallel tests exhaust mmaps.",
+		},
+		// Trailing punctuation belongs to neither half.
+		{
+			"Retry twice, because the upstream 502s",
+			"Retry twice",
+			"because the upstream 502s",
+		},
+		// Opening on the reason would leave no decision at all.
+		{
+			"since the upstream 502s we retry twice",
+			"since the upstream 502s we retry twice",
+			"",
+		},
+		// "reason" as an ordinary noun must not cut a note into fragments — this
+		// is why a decision half has to be more than a word or two.
+		{
+			"the reason code is duplicated",
+			"the reason code is duplicated",
+			"",
+		},
+	} {
+		d, w := firstSentence(c.in)
+		if d != c.decision || w != c.why {
+			t.Errorf("firstSentence(%q)\n got decision %q why %q\nwant decision %q why %q",
+				c.in, d, w, c.decision, c.why)
+		}
+	}
+}
+
 func TestBackfillIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	chdir(t, dir)
