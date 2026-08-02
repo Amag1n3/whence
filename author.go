@@ -716,6 +716,19 @@ var (
 		"because", "so that", "otherwise", "since", "to avoid",
 		"rather than", "instead of", "reason", "caused",
 	}
+
+	// splitWords are the subset of reasonWords that mark WHERE the reason
+	// starts, for splitting a one-sentence note into its two halves.
+	//
+	// "reason" and "caused" are deliberately absent. Both occur as an ordinary
+	// noun and verb in the middle of a clause — "the reason code is duplicated",
+	// "the leak caused by this" — where cutting at them yields two fragments and
+	// no decision. They remain fine evidence that a note explains itself, which
+	// is a different question from where the explanation begins.
+	splitWords = []string{
+		"because", "so that", "otherwise", "since", "to avoid",
+		"rather than", "instead of",
+	}
 )
 
 var skipDir = map[string]bool{
@@ -893,7 +906,55 @@ func firstSentence(s string) (decision, why string) {
 	if i := strings.Index(s, ". "); i >= 0 {
 		return s[:i+1], strings.TrimSpace(s[i+2:])
 	}
+	if d, w, ok := splitAtReason(s); ok {
+		return d, w
+	}
 	return s, ""
+}
+
+// splitAtReason cuts a one-sentence note at the word that admitted it.
+//
+// A NOTE or TODO is only harvested when it says WHY, and people write that
+// inline at least as often as in a second sentence: "change to 0 here to avoid
+// pointer mangling" carries both halves in one breath. firstSentence finds no
+// boundary in that and puts everything in the decision — so the note is admitted
+// for giving a reason and then stored with none, which is the gate and the store
+// disagreeing about the same comment.
+//
+// The earliest reason word wins, so the why carries the whole justification
+// rather than its tail.
+//
+// It cuts on a narrower list than admission uses — see splitWords. Admitting a
+// note and cutting one are different questions: any of the reason words is
+// evidence the note explains itself, but only some of them mark where the
+// explanation starts.
+//
+// Two more refusals, on the same asymmetry the word list itself is chosen on: a
+// note left whole is recoverable by hand, a note cut into fragments is a garbage
+// record in a committed store. A note that OPENS on its reason ("since X, do Y")
+// would leave no decision. And non-ASCII case folding can change byte length,
+// which moves every offset — so the split is abandoned rather than applied to
+// indices that may no longer mean anything.
+func splitAtReason(s string) (decision, why string, ok bool) {
+	l := strings.ToLower(s)
+	if len(l) != len(s) {
+		return "", "", false
+	}
+	at := -1
+	for _, w := range splitWords {
+		if i := strings.Index(l, w); i > 0 && (at < 0 || i < at) {
+			at = i
+		}
+	}
+	if at < 0 {
+		return "", "", false
+	}
+	d := strings.TrimRight(strings.TrimSpace(s[:at]), " ,;—-")
+	w := strings.TrimSpace(s[at:])
+	if d == "" || w == "" {
+		return "", "", false
+	}
+	return d, w, true
 }
 
 func has(rs []Record, file, decision string) bool {
