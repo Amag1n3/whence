@@ -188,7 +188,7 @@ const LEDGER = [
   {
     on: true,
     t: 'whence check',
-    d: 'The CI gate. Reports the decisions covering a diff, and the ones the diff just severed. Exit 1.',
+    d: 'The CI gate. Prints the decisions covering a diff; fails the build only for the ones it damaged — worn away, cut loose, or left standing on deleted evidence.',
   },
   {
     on: true,
@@ -442,7 +442,7 @@ export default function App() {
             depth="06"
             eyebrow="the gate"
             title="The exit code is the product"
-            lede="Everything else leads here. In CI, a diff is compared against the decisions that govern the lines it touches — and against the ones it just quietly severed."
+            lede="Everything else leads here. In CI, a diff is compared against the decisions that govern the lines it touches — and the build fails only for the ones it quietly wore away or severed."
           >
             <Gate />
           </Layer>
@@ -459,10 +459,9 @@ export default function App() {
               <Reveal>
                 <h3 className="mb-3 text-[16px]">
                   <span className="mr-2.5 font-mono text-[11.5px] text-dim">01</span>
-                  Build the binary
+                  Install it
                 </h3>
-                <Code>{`git clone https://github.com/Amag1n3/whence
-cd whence && go build -o whence .
+                <Code>{`go install github.com/Amag1n3/whence@latest
 
 # zsh and ksh only — both shadow it with a builtin
 echo "alias whence='command whence'" >> ~/.zshrc`}</Code>
