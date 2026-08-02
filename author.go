@@ -633,6 +633,15 @@ func backfillCmd(args []string) {
 		fmt.Fprintln(os.Stderr, "whence:", err)
 		os.Exit(1)
 	}
+	// The walk below ignores read errors, which is right for a subdirectory it
+	// stumbles into and wrong for the root the user named: a typo there produced
+	// "0 record(s) added", which reads as "your repo has nothing in it" rather
+	// than "that path does not exist". Same rule as an anchor that cannot be
+	// found — say so, do not report a confident zero.
+	if st, err := os.Stat(abs); err != nil || !st.IsDir() {
+		fmt.Fprintf(os.Stderr, "whence: cannot read %s as a directory\n", dir)
+		os.Exit(1)
+	}
 
 	added, skipped := 0, 0
 	err = filepath.WalkDir(abs, func(p string, d fs.DirEntry, err error) error {
