@@ -1,4 +1,5 @@
 import { ArrowUpRight, Check, Minus } from 'lucide-react'
+import { Fragment } from 'react'
 import type { MouseEvent, ReactNode } from 'react'
 
 import { Reveal } from '@/components/Reveal'
@@ -7,6 +8,13 @@ import { DriftDemo } from '@/components/DriftDemo'
 import { Gate } from '@/components/Gate'
 import { StrataRail, type Stratum } from '@/components/StrataRail'
 import { Button } from '@/components/ui/button'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
+import { FAQ } from '@/content/faq'
 import { cn } from '@/lib/utils'
 
 const REPO = 'https://github.com/Amag1n3/whence'
@@ -26,6 +34,7 @@ const STRATA: Stratum[] = [
   { id: 'scope', label: 'what it isn’t' },
   { id: 'handling', label: 'your code' },
   { id: 'falsification', label: 'the kill number' },
+  { id: 'faq', label: 'questions' },
 ]
 
 /** Scroll without writing a hash into the address bar. The href stays so it
@@ -592,6 +601,59 @@ whence log                       # everything in the nearest store`}</Code>
               </Reveal>
             </div>
           </section>
+
+          {/* --------------------------------------------------------- faq */}
+          <Layer
+            id="faq"
+            depth="11"
+            eyebrow="questions"
+            title="Everything else, answered"
+            lede="Reference material, so it sits after the argument rather than on top of it. Where the answer is that something is not built or not settled, it says so."
+          >
+            <div className="grid gap-x-16 gap-y-10 lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start">
+              {FAQ.map((cluster, i) => (
+                <Fragment key={cluster.id}>
+                  <Reveal delay={0.02}>
+                    <p className="font-mono text-[11px] tracking-[0.2em] text-dim uppercase lg:sticky lg:top-24 lg:pt-5">
+                      {cluster.label}
+                    </p>
+                  </Reveal>
+                  <Reveal delay={0.04}>
+                    <Accordion
+                      type="multiple"
+                      /* Reference material, so several answers stay open at once.
+                         The first cluster opens on its first question — one row
+                         showing what an answer looks like, rather than a wall of
+                         closed headings the reader has to guess at. */
+                      defaultValue={i === 0 ? [`${cluster.id}-0`] : undefined}
+                      className="border-t border-white/[0.07]"
+                    >
+                      {cluster.questions.map((item, j) => (
+                        <AccordionItem key={item.q} value={`${cluster.id}-${j}`}>
+                          <AccordionTrigger>{item.q}</AccordionTrigger>
+                          <AccordionContent>{item.a}</AccordionContent>
+                        </AccordionItem>
+                      ))}
+                    </Accordion>
+                  </Reveal>
+                </Fragment>
+              ))}
+            </div>
+
+            <Reveal>
+              <p className="mt-14 max-w-[56ch] border-t border-white/[0.07] pt-7 text-[14.5px] leading-[1.7] text-muted-foreground">
+                Something not answered here, or answered wrongly?{' '}
+                <a
+                  href={REPO}
+                  className="text-ochre underline-offset-4 transition-colors hover:underline"
+                >
+                  Open an issue
+                </a>{' '}
+                — a question this page cannot answer is a gap in the argument, not a support
+                request.
+              </p>
+            </Reveal>
+          </Layer>
         </main>
 
         <footer className="border-t border-white/[0.07]">
