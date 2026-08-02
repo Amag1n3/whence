@@ -119,8 +119,8 @@ export const FAQ: Cluster[] = [
             Records carry who wrote them. An agent-authored record is marked{' '}
             <C>UNCHECKED</C> until a human runs <C>confirm</C> on it, and the mark travels
             into the context block the next agent receives. Right now every record in this
-            project&rsquo;s own store is human-written, because capture is not built — which
-            is a schedule accident, not a control.
+            project&rsquo;s own store is human-written, because nothing writes records
+            automatically yet — which is a schedule accident, not a control.
           </>
         ),
       },
@@ -134,7 +134,7 @@ export const FAQ: Cluster[] = [
             it, signing would prove who wrote a record rather than whether it is true, and
             the research on stated reasoning suggests the problem gets worse with more
             capable models, not better. It is the most serious doubt about the premise and
-            it is why capture stays off.
+            it is why capture reads without writing.
           </>
         ),
       },
@@ -378,11 +378,40 @@ export const FAQ: Cluster[] = [
         q: 'Capture is described first everywhere. Is it built?',
         a: (
           <>
-            No. Records are authored by hand or harvested from comments that already exist.
-            Deciding which slice of a session is worth keeping is the hard problem, and
-            curated records are the specification for solving it — shipping a naive version
-            that writes plausible-sounding reasoning into a committed shared store would
-            manufacture exactly the failure this project is most worried about.
+            Not the half that writes. Records are still authored by hand or harvested from
+            comments that already exist. Deciding which slice of a session is worth keeping
+            is the hard problem, and curated records are the specification for solving it —
+            shipping a naive version that writes plausible-sounding reasoning into a
+            committed shared store would manufacture exactly the failure this project is
+            most worried about.
+          </>
+        ),
+      },
+      {
+        q: 'Then what does whence capture do?',
+        a: (
+          <>
+            It reads. Given a finished Claude Code session it prints every edit beside the
+            span it touched, the request that prompted it, and what was said immediately
+            before it — then stops. Nothing reaches the store, and the last line of the
+            output says so. It is the instrument the writing half is waiting on: the
+            question of whether stated reasoning is the actual cause has to be answered by
+            somebody reading real pairs, and a capture that wrote records would be answering
+            it by assumption.
+          </>
+        ),
+      },
+      {
+        q: 'Why does it read a file instead of hooking the session?',
+        a: (
+          <>
+            Because the file already exists. Claude Code writes every session to disk and
+            keeps it, so there was nothing to intercept — no second hook, no trail to
+            maintain, and no cost added to any edit. What was missing was a reader. The
+            deliberation is not in there, though: thinking blocks persist with their text
+            dropped, so what survives is the explanation given to the user rather than the
+            weighing that produced it. That is a limit of the source, not a detail of the
+            implementation.
           </>
         ),
       },
@@ -399,13 +428,17 @@ export const FAQ: Cluster[] = [
         ),
       },
       {
-        q: 'What is the first step toward it?',
+        q: 'Has anything been measured yet?',
         a: (
           <>
-            Writing session trails to a gitignored file with nothing entering the store — an
-            instrument rather than a feature. Until there is data on how often stated
-            reasoning is the actual cause, anything that writes records automatically is
-            guessing.
+            A little, and it cuts both ways. Reasoning is stated <em>before</em> each edit
+            rather than after, which is not the shape post-hoc rationalisation takes — a
+            claim made in advance can be checked against what the edit did. But counting how
+            often a reason is given turns out to be harder than the counting: a keyword test
+            reports a floor and misses reasons carried by sentence structure instead of by a
+            conjunction, so the honest figure is a range, not a number. That is one project
+            read by its own author, which is the weakest possible evidence and still more
+            than existed before.
           </>
         ),
       },
@@ -487,6 +520,19 @@ export const FAQ: Cluster[] = [
             — worth knowing before running it across an unfamiliar repository. Redaction
             belongs at capture, before the write, because git history is effectively
             append-only and deleting the file later is not recovery.
+          </>
+        ),
+      },
+      {
+        q: 'whence capture reads my session transcripts. Where does that go?',
+        a: (
+          <>
+            To your terminal, and nowhere else. It opens a session file your agent already
+            wrote, on your own disk, prints what it found and exits — it does not copy the
+            transcript, write to the store, or reach the network. The binary contains no
+            HTTP client at all. It does print what you typed and what the agent replied, so
+            treat the output like any other terminal session before pasting it somewhere.
+            Edits to files outside the store you are asking about are counted and not shown.
           </>
         ),
       },
@@ -741,7 +787,8 @@ export const FAQ: Cluster[] = [
         q: 'What is on the roadmap?',
         a: (
           <>
-            Nearest is the instrumentation that has to precede capture. Beyond that:
+            Nearest is reading enough captured sessions to answer the faithfulness question
+            the writing half is blocked on. Beyond that:
             harvesting from more sources than comments, record signing alongside capture,
             and eventually team sync with a dashboard. AST paths and anything in the last
             group wait for a real repository to demand them — several features on this page
