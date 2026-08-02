@@ -39,6 +39,19 @@ func main() {
 		usage()
 		os.Exit(2)
 	}
+	// Asking a subcommand for help must never run it. backfill reads its first
+	// argument as a directory, so `whence backfill --help` walked a path that did
+	// not exist and reported "0 record(s) added" — a confident wrong answer to
+	// someone meeting the tool for the first time, and the reading they would
+	// take from it is that their repo has nothing in it.
+	//
+	// Only the first argument is checked. A later one may legitimately contain
+	// the text, as in `whence add x.go:1-2 -d "document --help"`.
+	if len(os.Args) > 2 && (os.Args[2] == "-h" || os.Args[2] == "--help" || os.Args[2] == "help") {
+		usage()
+		return
+	}
+
 	switch os.Args[1] {
 	case "hook":
 		hookPre()
