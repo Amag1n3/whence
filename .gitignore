@@ -9,3 +9,7 @@
 # site build
 web/node_modules/
 web/dist/
+
+# working notes, not part of the tool
+HANDOFF.md
+SECTION-AUDIT.md
