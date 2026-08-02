@@ -14,9 +14,9 @@ import (
 
 // `why check` — the CI gate.
 //
-// It compares a diff against the records covering the lines that diff touches,
-// and exits non-zero when any are found. That exit code is the point: it is the
-// one place whence stops a change rather than merely informing it.
+// It compares a diff against the records covering the lines that diff touches
+// and reports what it finds. Only some of that is worth an exit code, and
+// deciding which is the whole design of this file.
 //
 // WHAT IT DOES NOT DO: decide whether the change is wrong. DECISIONS §3 is
 // explicit that the failure mode of this project is drifting into code review —
@@ -26,13 +26,38 @@ import (
 // and confirm. The README's older mock said "contradicts record #4f2a", which
 // claimed more than this can honestly do.
 //
-// Two things get reported, and the second is the one worth having:
+// Three things get reported and only two of them fail the build:
 //
-//  1. touched — the diff modifies lines a record currently anchors to.
-//  2. anchor lost — the record anchored cleanly in the base revision and does
+//  1. touched — the diff modifies lines a record currently anchors to, and the
+//     recorded content came through intact. INFORMATIONAL, exit 0.
+//  2. eroded — the block anchored cleanly in the base revision and part of it is
+//     gone now. FAILS.
+//  3. anchor lost — the record anchored cleanly in the base revision and does
 //     not anchor at all now. That means this change destroyed the link between
 //     a decision and the code it was about, which no human reviewing the diff
-//     would otherwise notice.
+//     would otherwise notice. FAILS.
+//
+// A fourth lives in groundsLostIn, on a different file: the evidence a record
+// rested on was deleted. FAILS, for the same reason as 3.
+//
+// Why 1 does not fail. It cannot be satisfied. A touch is answered by reading
+// the record and agreeing with it, and there is nowhere to put that agreement —
+// re-run and the identical finding comes back. And a touch that is not also an
+// erosion is, in practice, a whitespace change: hashSpan skips blank lines and
+// trims the rest, so any edit with text in it moves a hash and surfaces as 2
+// instead. Measured on this repo's own store, inserting one blank line inside a
+// recorded span reported a touch while the anchor still read "intact"; inserting
+// one comment line reported erosion at 80%. So a gate failing on 1 fails on
+// gofmt, which means it fails on every pull request, which means it gets
+// switched off — and 2 and 3, the findings nobody can catch by eye, stop being
+// seen at all. Spending the exit code on the cheapest finding was costing the
+// two that justify the tool.
+//
+// The alternative was an acknowledgement flag, and it was refused. A gate you
+// clear by pasting a command on every pull request is one you stop reading
+// before you clear, and it then reports "a human checked this" when no human
+// did — §17.7's rubber stamp, which is worse than no gate because it launders
+// unchecked claims as checked ones.
 func checkCmd(args []string) {
 	fl := flag.NewFlagSet("check", flag.ExitOnError)
 	base := fl.String("base", "origin/main", "revision to compare against")
@@ -68,7 +93,7 @@ func checkCmd(args []string) {
 	}
 	sort.Strings(files) // stable output: CI logs get compared by humans
 
-	total := 0
+	total, damaged := 0, 0
 	priorByStore := map[string]map[string]bool{}
 
 	for _, file := range files {
@@ -96,13 +121,15 @@ func checkCmd(args []string) {
 		wasLines := gitLines(root, *base, file)
 
 		nowLines := fileLines(abs)
-		for _, f := range inspect(rs, prior, rel, nowLines, wasLines, changed) {
+		findings := append(
+			inspect(rs, prior, rel, nowLines, wasLines, changed),
+			groundsLostIn(rs, prior, rel, nowLines, wasLines)...)
+		for _, f := range findings {
 			report(f)
 			total++
-		}
-		for _, f := range groundsLostIn(rs, prior, rel, nowLines, wasLines) {
-			report(f)
-			total++
+			if f.blocking() {
+				damaged++
+			}
 		}
 	}
 
@@ -110,9 +137,25 @@ func checkCmd(args []string) {
 		fmt.Println("no records cover this diff.")
 		return
 	}
-	fmt.Printf("\n%d record(s) to confirm. whence does not judge the change — it reports that\n"+
-		"recorded decisions cover these lines. Confirm each, then re-run.\n", total)
+	if damaged == 0 {
+		fmt.Printf("\n%d recorded decision(s) cover these lines and came through intact.\n"+
+			"Context, not a gate — nothing to do.\n", total)
+		return
+	}
+	fmt.Printf("\n%d recorded decision(s) damaged by this change", damaged)
+	if intact := total - damaged; intact > 0 {
+		fmt.Printf(", %d more covered and intact", intact)
+	}
+	fmt.Printf(".\nwhence does not judge the change — it reports what became of the record.\n" +
+		"Re-point each with `why reanchor`, or retract it deliberately.\n")
 	os.Exit(1)
+}
+
+// blocking reports whether a finding is worth an exit code: something happened
+// to the record itself, rather than the diff merely passing through lines it
+// covers. See the three cases in this file's header for why a touch is not one.
+func (f finding) blocking() bool {
+	return f.ground != nil || f.eroded > 0 || f.lost
 }
 
 // lineSpan is an inclusive range of line numbers in a file's current revision.
@@ -272,7 +315,11 @@ func report(f finding) {
 			f.r.ID, f.r.File)
 		return
 	}
-	fmt.Printf("\n  ! %s:%s — touches record [%s] (%s)\n",
+	// A softer marker than the two above, because this one does not fail the
+	// build. Same vocabulary rule as the anchor states: the symbol IS the
+	// severity, and a reader scanning CI output should not have to reach the
+	// summary line to learn which findings they have to act on.
+	fmt.Printf("\n  · %s:%s — covered by record [%s] (%s), intact\n",
 		f.r.File, spans(f.at), f.r.ID, f.r.Date)
 	fmt.Printf("    %s\n", f.r.Decision)
 	if f.r.Why != "" {
