@@ -78,7 +78,7 @@ edits, so it doesn't reintroduce the bug. And in CI:
 ```console
 $ whence check --base origin/main
 
-  ! src/auth/session.go:145 — touches record [4f2a] (2026-07-27)
+  · src/auth/session.go:145 — covered by record [4f2a] (2026-07-27), intact
     Never write shared session keys from this flow — namespace all three.
     why: "userToken", "userId" and "role" are all read by the admin dashboard.
     src/auth/session.go:142-148 · intact, exact range
@@ -87,13 +87,16 @@ $ whence check --base origin/main
     100% of the recorded block survived before this diff, 64% now
     Retry with backoff here; the provider rate-limits per-account, not per-key.
     src/auth/session.go:88-94 · altered
+    if the rewrite kept the decision, re-point it with `why reanchor 7d31 ...`
 
   ✗ src/auth/session.go — record [9c1b] lost its anchor in this change
     it anchored at 88-94 before this diff; nothing matches now
     the decision is still on record; the code it described is gone.
-    re-anchor it with `whence add`, or delete it deliberately.
+    re-point it with `why reanchor 9c1b src/auth/session.go:<start>-<end>`,
+    or retract it deliberately.
 
-  3 record(s) to confirm. exit 1
+  2 recorded decision(s) damaged by this change, 1 more covered and intact.
+  exit 1
 ```
 
 That exit code is the product. Everything else is plumbing that leads to it.
@@ -101,10 +104,25 @@ That exit code is the product. Everything else is plumbing that leads to it.
 **`check` reports coverage, never verdicts.** It says *these lines are governed by
 these decisions, go and confirm* — it does not decide that your change is wrong.
 Judging a diff is code review, that category is well served, and a tool that
-starts doing it has lost the thing that makes it different. The last two findings
-are the ones no reviewer would catch unaided: neither change contradicted
-anything, they wore away and then severed the link between a decision and the
-code it described.
+starts doing it has lost the thing that makes it different.
+
+**Only damage to a record fails the build.** The last two findings are the ones no
+reviewer would catch unaided: neither change contradicted anything in writing,
+they wore a decision away and then severed it from the code it described. The
+first finding is different — the diff passed through covered lines and the record
+came through whole — so it prints and the build passes.
+
+That split is load-bearing, not a convenience. A touch cannot be *satisfied*: you
+read the record, you agree with it, you change nothing, and re-running reports the
+identical finding. And a touch that is not also an erosion is in practice a
+whitespace change, because any edit with text in it moves a content hash and
+surfaces as erosion instead. So failing on touches means failing on `gofmt`, which
+means failing on every pull request, which means the gate gets switched off —
+taking the two findings that justify the tool with it.
+
+The obvious alternative, an "I checked this" flag, is refused. A gate you clear by
+pasting a command on every pull request is one you stop reading before you clear,
+and it then reports that a human checked something when no human did.
 
 A record introduced by the same diff is not reported. Otherwise every pull
 request that records a decision fails its own gate, which is how a team learns to
@@ -113,14 +131,21 @@ switch the gate off.
 ## Install
 
 ```console
+$ go install github.com/Amag1n3/whence@latest
+```
+
+Go 1.22+. No tags exist yet, so `@latest` resolves to a pseudo-version of the
+default branch — expect that to settle down once releases start.
+
+Building from source works the same way and is the better option if you want
+the `why` symlink or intend to edit the code:
+
+```console
 $ git clone https://github.com/Amag1n3/whence && cd whence
 $ go build -o whence .
 $ mv whence ~/.local/bin/                        # anywhere on $PATH
 $ ln -s ~/.local/bin/whence ~/.local/bin/why     # optional short form
 ```
-
-Go 1.22+. `go install github.com/Amag1n3/whence@latest` will work once the
-package moves to a `cmd/whence/` layout; until then, build it.
 
 ### One note about zsh and ksh
 
@@ -230,10 +255,12 @@ Commit `.whence/records.json`. That is the point — records travel with the rep
 - run: go build -o whence . && ./whence check -base origin/${{ github.base_ref }}
 ```
 
-Exit 1 means recorded decisions cover the lines this pull request changes. It is
-not a verdict on the change — go and confirm each, then re-run. See
-[`.github/workflows/whence.yml`](.github/workflows/whence.yml), which is this
-repo gating on itself.
+Exit 1 means this pull request damaged a recorded decision — wore part of one
+away, cut one loose from its code, or deleted the evidence one rested on. It is
+not a verdict on the change: re-point each with `whence reanchor`, or retract it
+deliberately, then re-run. Decisions merely *covering* the lines you changed print
+and exit 0. See [`.github/workflows/whence.yml`](.github/workflows/whence.yml),
+which is this repo gating on itself.
 
 ## How it works
 

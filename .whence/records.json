@@ -252,5 +252,30 @@
         "ref": "go test -run TestEvidencePointingAtCodeGetsItsOwnAnchor ./..."
       }
     ]
+  },
+  {
+    "id": "6a5999",
+    "date": "2026-08-02",
+    "source": "design",
+    "file": "check.go",
+    "line_start": 154,
+    "line_end": 159,
+    "decision": "Only damage to a record fails the build; a touch prints and exits 0.",
+    "why": "A touch cannot be satisfied — read the record, agree with it, change nothing, and re-running reports the identical finding. There is nowhere to put the agreement. And a touch that is not also an erosion is in practice a whitespace change, because hashSpan trims every line with text in it, so any real edit surfaces as erosion instead: measured on this store, one blank line inserted into a recorded span reported a touch with the anchor still intact, one comment line reported erosion at 80%. Failing on touches therefore means failing on gofmt, on every pull request, until the gate is switched off — taking erosion and lost anchors, the findings nobody catches by eye, with it. An acknowledgement flag was the alternative and was refused: a gate cleared by pasting a command every time is one you stop reading before you clear, and it then claims a human checked what no human read.",
+    "line_hashes": [
+      "603a0395",
+      "e990cea2",
+      "8d5fc635",
+      "6b717db4",
+      "9af611c5",
+      "d10b36aa"
+    ],
+    "evidence": [
+      {
+        "ref": "go test -run TestOnlyDamageToARecordIsWorthAnExitCode ./..."
+      }
+    ],
+    "author": "human",
+    "verified": "2026-08-02"
   }
 ]

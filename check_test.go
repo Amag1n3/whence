@@ -152,6 +152,59 @@ func TestInspectReportsAnAnchorThisDiffDestroyed(t *testing.T) {
 	}
 }
 
+// The exit code is spent only on what happened to a record, never on the diff
+// having passed through lines it covers.
+//
+// A touch cannot be satisfied: you read the record, you agree with it, you change
+// nothing, and re-running reports the identical finding. Failing on it means
+// failing on gofmt — a touch that is not also an erosion is a whitespace change,
+// because hashSpan trims every line with text in it — so the build is red on
+// every pull request until somebody switches the gate off, taking the two
+// findings nobody can catch by eye with it.
+func TestOnlyDamageToARecordIsWorthAnExitCode(t *testing.T) {
+	prior := map[string]bool{"b5": true}
+
+	// Touched, anchor intact: reported, does not fail.
+	touch := inspect([]Record{rec(block)}, prior, "session.go", block, block, []lineSpan{{3, 3}})
+	if len(touch) != 1 {
+		t.Fatalf("want the touch reported, got %d findings", len(touch))
+	}
+	if touch[0].blocking() {
+		t.Error("a diff passing through an intact record must not fail the build")
+	}
+
+	// Eroded: part of the recorded block is gone. Fails.
+	eroded := []string{
+		block[0], block[1], block[2],
+		"\tstore.Set(\"role\", s.Role)", // the namespace, dropped
+		"\tauditTrail(s)",
+		block[4],
+	}
+	got := inspect([]Record{rec(block)}, prior, "session.go", eroded, block, []lineSpan{{4, 5}})
+	if len(got) != 1 || !got[0].blocking() {
+		t.Errorf("erosion is damage to the record and must fail: %+v", got)
+	}
+
+	// Anchor destroyed. Fails.
+	gone := []string{block[0], "	persistNamespaced(s)", block[4]}
+	got = inspect([]Record{rec(block)}, prior, "session.go", gone, block, []lineSpan{{2, 2}})
+	if len(got) != 1 || !got[0].blocking() {
+		t.Errorf("a destroyed anchor must fail: %+v", got)
+	}
+
+	// Evidence deleted, record itself untouched. Fails.
+	was := []string{"func render(u User) {", `	read("CHECKOUT_userToken")`, `	read("CHECKOUT_role")`, "}"}
+	r := rec(block)
+	r.Evidence = []Evidence{{
+		Ref: "dashboard.go:2-3", File: "dashboard.go", Start: 2, End: 3, Lines: hashSpan(was[1:3]),
+	}}
+	got = groundsLostIn([]Record{r}, prior, "dashboard.go",
+		[]string{"func render(u User) {", "	renderV2(u)", "}"}, was)
+	if len(got) != 1 || !got[0].blocking() {
+		t.Errorf("a record left standing on nothing must fail: %+v", got)
+	}
+}
+
 // A record that was already broken before this change is somebody else's problem.
 // Failing CI for it teaches people to skip the gate.
 func TestInspectIgnoresAnOrphanItDidNotCause(t *testing.T) {
