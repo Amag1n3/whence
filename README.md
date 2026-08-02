@@ -11,7 +11,7 @@
 > anchoring with drifted / weak / orphaned states, evidence pointers that anchor
 > and rot independently of the record, `whence check` as a CI gate, human-vs-agent
 > authorship with a confirmation step, a committed retraction log, `whence add`,
-> `whence rm`, `whence confirm`, `whence reground`, and `whence backfill` — which harvests decisions already
+> `whence rm`, `whence confirm`, `whence reground`, `whence reanchor`, and `whence backfill` — which harvests decisions already
 > written down as `HACK:` / `WORKAROUND:` / `ponytail:` comments, and as
 > `NOTE:` / `TODO:` notes that give a reason — so a store is non-empty without
 > anyone retyping anything.
@@ -310,6 +310,19 @@ reading all you like; citing one as grounds is refused. That single link is how 
 wrong record makes the next look credible — Wikipedia calls its version
 *citogenesis*, and the rule is the same one: link to another article freely, never
 use it as your source.
+
+Both halves of a record rot on their own, so both have a verb that fixes them
+without a retraction. `whence reground` re-points the evidence when the grounds
+move; `whence reanchor <id> <file>:<a>-<b>` re-points the record itself when the
+block it described gets rewritten and the decision still holds. Neither is a
+retraction — `whence rm` writes to a log that counts records which turned out to
+be *wrong*, and doing routine bookkeeping there would destroy the one number
+measuring whether the store can be trusted.
+
+`reanchor` makes you name the lines. Where a degraded record currently points is
+a best-match window of a fixed number of significant lines, so it sits a line or
+two off the real block about as often as not — re-hashing it would store a guess
+as a certainty, which is the one failure the anchoring design exists to prevent.
 
 Records with no evidence are normal, not second-class. Most decisions are judgement
 under constraints and have no artifact behind them. The field exists to stop the

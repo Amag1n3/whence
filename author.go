@@ -180,6 +180,97 @@ func reground(id string, refs []string) (Resolved, string, error) {
 	return Resolved{}, store, fmt.Errorf("no record [%s] in %s", id, store)
 }
 
+// --- re-pointing the record itself --------------------------------------
+
+// reanchorCmd re-points a record's own anchor at the code as it stands now.
+//
+// The twin of reground, for the other half of a record. Both halves rot on
+// their own: grounds get deleted while the claim holds, and a block gets
+// rewritten in place while the decision about it is still exactly right. `check`
+// reports that erosion, and the only answer available was rm plus add — which
+// writes to retracted.jsonl, the log whose entire purpose is counting how often
+// a record turned out to be WRONG. Re-pointing a live claim is not a
+// retraction, and putting that bookkeeping in that log would have destroyed the
+// one number measuring whether this store can be trusted. Same argument as
+// reground, other half of the record.
+//
+// ONLY the hashes are rewritten. Start and End stay where the decision was made,
+// per the invariant on Record: how far a record has travelled is information,
+// and a reanchor has no reason to burn it. The record goes on reading "now at
+// 245-258, recorded at 209-222" — which is true, and strictly more than it could
+// say if the recorded range were overwritten with the resolved one.
+//
+// This does not confirm anything about the decision. A human deciding the claim
+// still holds is the input to running this, not something it can attest to.
+func reanchorCmd(args []string) {
+	if len(args) != 2 || strings.HasPrefix(args[0], "-") {
+		fmt.Fprintln(os.Stderr, "usage: whence reanchor <id> <file>:<start>-<end>")
+		os.Exit(2)
+	}
+	rec, store, err := reanchor(args[0], args[1])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "whence:", err)
+		os.Exit(1)
+	}
+	fmt.Println(store)
+	// Resolved, so an anchor that did not come out exact is visible immediately
+	// rather than three months from now — same reason add prints itself back.
+	print1(rec)
+}
+
+// reanchor re-hashes a record against an explicitly named span of its own file.
+//
+// The span is always the human's, never inherited from where the record
+// currently resolves. A degraded record's span is a best-match window of a fixed
+// number of significant lines, so it routinely sits a line or two off the real
+// block — and re-hashing that window would turn a best guess into a stored
+// certainty, which is exactly the confident-wrong-line failure anchor.go exists
+// to prevent. The window's line numbers are printed by `why` and by `check`, so
+// agreeing with it costs a copy and a paste; the point is that agreeing is an
+// act somebody performs.
+func reanchor(id, target string) (Resolved, string, error) {
+	store, root, rs := openStore()
+	for i := range rs {
+		if rs[i].ID != id {
+			continue
+		}
+		f, start, end := splitSpan(target)
+		if start == 0 {
+			return Resolved{}, store, fmt.Errorf(
+				"reanchor needs the lines the decision is about now, e.g. %s:142-148", rs[i].File)
+		}
+		// A decision whose code moved to another file is a different record: its
+		// recorded range would name lines in a file it no longer concerns, and
+		// every "recorded at" it printed from then on would be a claim about the
+		// wrong file. Refused rather than quietly rewritten.
+		fabs, err := filepath.Abs(f)
+		if err != nil {
+			return Resolved{}, store, err
+		}
+		if rel := filepath.ToSlash(Rel(root, fabs)); !samePath(rel, rs[i].File) {
+			return Resolved{}, store, fmt.Errorf(
+				"record [%s] is about %s, not %s — a decision that moved to another file is a new record. Add it there, and retract this one with a reason", id, rs[i].File, rel)
+		}
+
+		abs := filepath.Join(root, rs[i].File)
+		lines := fileLines(abs)
+		hashes, err := anchorSpan(lines, rs[i].File, start, end)
+		if err != nil {
+			return Resolved{}, store, err
+		}
+		rs[i].Lines = hashes
+		if err := save(store, rs); err != nil {
+			return Resolved{}, store, err
+		}
+		return Resolved{
+			Record:  rs[i],
+			Anchor:  resolveAnchor(lines, rs[i]),
+			Grounds: resolveEvidence(root, rs[i]),
+		}, store, nil
+	}
+	return Resolved{}, store, fmt.Errorf("no record [%s] in %s", id, store)
+}
+
 // openStore finds the store from the working directory and loads it, or exits.
 func openStore() (store, root string, rs []Record) {
 	cwd, err := os.Getwd()
@@ -256,6 +347,33 @@ func addUsage() {
 	os.Exit(2)
 }
 
+// anchorSpan hashes file:start-end into an anchor, refusing anything that could
+// not be found again.
+//
+// The last check is the one worth having. A span whose every line occurs all
+// over the file has nothing to distinguish this block from any other, so the
+// moment the code moves the anchor lands on whichever lookalike is nearest.
+// Failing here is worth much more than failing at lookup: right now the author
+// is looking at the file and can widen the span, which is the actual fix.
+func anchorSpan(lines []string, file string, start, end int) ([]string, error) {
+	if lines == nil {
+		return nil, fmt.Errorf("cannot read %s — a record has to be anchored to real lines", file)
+	}
+	if start < 1 || end < start || end > len(lines) {
+		return nil, fmt.Errorf("%s has %d lines; %d-%d is not in it", file, len(lines), start, end)
+	}
+	hashes := hashSpan(lines[start-1 : end])
+	if len(hashes) == 0 {
+		return nil, fmt.Errorf("%s:%d-%d is blank — nothing there to anchor to", file, start, end)
+	}
+	if !identifiable(hashes, counts(significant(lines))) {
+		return nil, fmt.Errorf(
+			"%s:%d-%d has nothing distinctive in it — every line appears elsewhere in the file, so this anchor could not tell the block apart from any lookalike. Widen the span to include a line unique to it",
+			file, start, end)
+	}
+	return hashes, nil
+}
+
 // add anchors a decision to a span of a file and appends it to the nearest
 // store. It returns the record as it resolves, so the caller can show the
 // anchor it just computed rather than assert it worked.
@@ -265,25 +383,9 @@ func add(file string, start, end int, decision, why, source, author string, evid
 		return Resolved{}, "", err
 	}
 	lines := fileLines(abs)
-	if lines == nil {
-		return Resolved{}, "", fmt.Errorf("cannot read %s — a record has to be anchored to real lines", file)
-	}
-	if start < 1 || end < start || end > len(lines) {
-		return Resolved{}, "", fmt.Errorf("%s has %d lines; %d-%d is not in it", file, len(lines), start, end)
-	}
-	hashes := hashSpan(lines[start-1 : end])
-	if len(hashes) == 0 {
-		return Resolved{}, "", fmt.Errorf("%s:%d-%d is blank — nothing there to anchor to", file, start, end)
-	}
-	// Refuse a span that could not be found again. Every line in it occurs all
-	// over the file, so the moment the code moves, the anchor has nothing to
-	// distinguish this block from any other. Failing here is worth much more
-	// than failing at lookup: right now the author is looking at the file and
-	// can widen the span, which is the actual fix.
-	if !identifiable(hashes, counts(significant(lines))) {
-		return Resolved{}, "", fmt.Errorf(
-			"%s:%d-%d has nothing distinctive in it — every line appears elsewhere in the file, so this anchor could not tell the block apart from any lookalike. Widen the span to include a line unique to it",
-			file, start, end)
+	hashes, err := anchorSpan(lines, file, start, end)
+	if err != nil {
+		return Resolved{}, "", err
 	}
 
 	store, root, ok := FindStore(abs)
