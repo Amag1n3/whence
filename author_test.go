@@ -594,6 +594,125 @@ func TestRemovingARecordLeavesATrace(t *testing.T) {
 	}
 }
 
+// The first ". " in a note is not always a sentence break. A real note read
+// "...might belong to other services (e.g. <names>), but since they are used
+// directly..." and the cut landed inside the abbreviation, so the decision — the
+// field an agent is shown first — ended mid-parenthesis and stated nothing.
+// Fixtures here are paraphrases: whence's store is public and committed, and the
+// notes that found this bug live in an employer repository.
+func TestFirstSentenceDoesNotCutInsideAnAbbreviation(t *testing.T) {
+	// A real sentence break exists later in the note, so refusing the `e.g.`
+	// cut must not mean giving up on the note — it means scanning on.
+	d, w := firstSentence("Skip the shared helpers (e.g. sessionStore.js, tokenCache.js) here. They assume a request context this worker has no access to.")
+	if strings.HasSuffix(d, "e.g.") {
+		t.Errorf("the decision was cut inside the abbreviation: %q", d)
+	}
+	if d != "Skip the shared helpers (e.g. sessionStore.js, tokenCache.js) here." {
+		t.Errorf("decision should be the real first sentence, got %q", d)
+	}
+	if !strings.HasPrefix(w, "They assume") {
+		t.Errorf("the why should be the second sentence, got %q", w)
+	}
+
+	// When the only ". " is the abbreviation's, there is no sentence boundary at
+	// all — so this has to fall through to splitAtReason rather than return a
+	// decision that says nothing. A note admitted for giving a reason must not
+	// be stored with an empty why.
+	d, w = firstSentence("Read the cap from the request (i.e. not the global default) because a tenant may raise it mid-session")
+	if d == "" || w == "" {
+		t.Errorf("should fall through to the reason split, got decision %q why %q", d, w)
+	}
+	if strings.HasSuffix(d, "i.e.") {
+		t.Errorf("the decision was cut inside the abbreviation: %q", d)
+	}
+
+	// An initial is the same shape as an abbreviation and the same failure: a
+	// decision of "J." is worse than no split, because it is confidently empty.
+	d, w = firstSentence("J. Smith owns this mapping. Do not change it without asking him.")
+	if d == "J." {
+		t.Error(`the decision must not be an initial ("J.")`)
+	}
+	if d != "J. Smith owns this mapping." || !strings.HasPrefix(w, "Do not change") {
+		t.Errorf("decision/why should split at the real break, got %q / %q", d, w)
+	}
+
+	// Ordinary two-sentence and inline-reason notes are unchanged by this: that
+	// regression is already covered by TestHarvestSpansTheNoteAndTheCodeBelowIt
+	// and TestBackfillSplitsAOneSentenceNoteAtItsReason, so it is not duplicated
+	// here.
+}
+
+// reasonWords' own ponytail: comment names its trigger — widen only against real
+// misses from a real repo. The trigger fired on 4 Aug: three notes, all genuine
+// decisions, all rejected because they state no cause. They commit to something
+// instead. Paraphrased fixtures, for the reason given above.
+func TestHarvestAdmitsANoteThatCommitsWithoutGivingACause(t *testing.T) {
+	commitments := [][]string{
+		// The most valuable shape: a cross-file invariant. Editing one side and
+		// not the other is exactly the regression whence exists to prevent, and
+		// the gate was dropping it for having no causal connective.
+		{"// NOTE: tagFor() here MUST stay identical to tagFor() in the ingest worker.", "func tagFor(s string) string {}"},
+		// A deliberate omission. "for" is not a reason word, so this was dropped.
+		{"// NOTE: signature verification intentionally omitted for the QA harness.", "func verify() bool {}"},
+		// Commitment stated as a guarantee rather than a cause.
+		{"// NOTE: keying on the immutable id ensures the path stays stable and maintains a readable change history.", "func pathFor(id string) string {}"},
+	}
+	for _, lines := range commitments {
+		got := harvest(lines)
+		if len(got) != 1 {
+			t.Errorf("a note that commits is a decision, not harvested: %q", lines[0])
+			continue
+		}
+		// Admitting it is only half the job — it has to reach the store with a
+		// decision field that says something.
+		if d, _ := firstSentence(got[0].text); d == "" {
+			t.Errorf("admitted with an empty decision: %q", lines[0])
+		}
+	}
+}
+
+// The regression guard for the whole widening. These three were rejected on
+// 4 Aug and the rejections were verified CORRECT — tasks wearing a decision's
+// clothes. If one flips to admitted, the change has made a committed, shared
+// store worse rather than better, which is the trade the marker set exists to
+// refuse.
+func TestHarvestStillRejectsTasksAfterTheCommitmentWidening(t *testing.T) {
+	tasks := [][]string{
+		// "required" reads as commitment and is not: this is why bare `must`,
+		// `required`, `never`, `always` and `keep` stay out of the list.
+		{"// TODO: Need to check if this is required", "func f() {}"},
+		{"// TODO: someone to check if we are still using this", "func f() {}"},
+		{"// TODO: SAVE users data to another file", "func f() {}"},
+	}
+	for _, lines := range tasks {
+		if got := harvest(lines); len(got) != 0 {
+			t.Errorf("a task is not a decision, but it was harvested: %q -> %q", lines[0], got[0].text)
+		}
+	}
+}
+
+// commitmentWords answer whether a note commits, never where its explanation
+// starts — "MUST stay identical" marks no split point. A commitment-only note is
+// therefore stored whole, and that is the right outcome: a note left whole is
+// recoverable by hand, a note cut into fragments is a garbage record in a
+// committed store.
+func TestACommitmentOnlyNoteIsStoredWholeRatherThanSplit(t *testing.T) {
+	got := harvest([]string{
+		"// NOTE: tagFor() here MUST stay identical to tagFor() in the ingest worker",
+		"func tagFor(s string) string {}",
+	})
+	if len(got) != 1 {
+		t.Fatalf("should be admitted, harvested %d", len(got))
+	}
+	d, w := firstSentence(got[0].text)
+	if w != "" {
+		t.Errorf("a commitment word must never reach the splitter, got why %q", w)
+	}
+	if d != got[0].text {
+		t.Errorf("the note should be stored whole, got decision %q", d)
+	}
+}
+
 func TestConfirmMarksAnAgentRecordChecked(t *testing.T) {
 	dir := t.TempDir()
 	chdir(t, dir)

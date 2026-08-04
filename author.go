@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // Writing records.
@@ -756,9 +757,45 @@ var (
 	// list. Left narrow on purpose: a missed note is recoverable by hand, and a
 	// garbage record in a committed shared store is not. Widen only against real
 	// misses from a real repo, never by imagining phrasings.
+	//
+	// That trigger FIRED on 2026-08-04, against four employer repositories: three
+	// genuine decisions were rejected — a cross-file invariant ("MUST stay
+	// identical to"), a deliberate omission ("intentionally omitted for"), and a
+	// guarantee ("ensures", "maintains"). The widening went to a SECOND AXIS
+	// rather than into this list: those are commitment, not cause, and this list
+	// is read for two jobs — admission, and via splitWords deciding where a reason
+	// begins. "MUST" is fine evidence a note commits and marks no split point
+	// whatsoever, so merging them would put a word that cannot split into the
+	// splitting path. See commitmentWords. This list is UNCHANGED, and the same
+	// rule still governs it: widen only against a fresh real miss.
 	reasonWords = []string{
 		"because", "so that", "otherwise", "since", "to avoid",
 		"rather than", "instead of", "reason", "caused",
+	}
+
+	// commitmentWords are what a decision sounds like when it states no cause.
+	//
+	// A note can prove it is a decision two ways: by explaining WHY (reasonWords)
+	// or by committing to something a reader must not undo. "norm() here MUST stay
+	// identical to norm() in the ingest worker" gives no reason and is
+	// unmistakably a decision — and is the shape whose loss costs most, since
+	// editing one side of a cross-file invariant and not the other is the exact
+	// regression whence exists to prevent.
+	//
+	// Admission-only — NEVER add these to splitWords: they mark that a note
+	// commits, not where its explanation starts, and a note with no causal split
+	// point is correctly left whole.
+	//
+	// Bare "must", "required", "never", "always" and "keep" are deliberately
+	// absent: they appear in ordinary tasks, and "required" in particular would
+	// admit `// TODO: Need to check if this is required`, one of 17 rejections
+	// verified CORRECT on 2026-08-04. That is why "must" appears only in phrase
+	// form. Checked by hand against that run: this list admits all three real
+	// misses and none of the 17 correct rejections.
+	commitmentWords = []string{
+		"intentionally", "deliberately", "on purpose",
+		"ensures", "guarantees", "maintains",
+		"must stay", "must match", "must remain", "must be identical",
 	}
 
 	// splitWords are the subset of reasonWords that mark WHERE the reason
@@ -863,7 +900,11 @@ func harvest(lines []string) []found {
 		// state the shortcut first and justify it underneath, which is the shape
 		// worth harvesting; testing the first line alone would reject exactly the
 		// well-written ones.
-		if text != "" && (!needsReason || hasReason(text)) {
+		//
+		// Two independent ways to qualify, so the condition is widened here rather
+		// than inside hasReason: a function called hasReason that returned true
+		// for "MUST" would be a lie in its own name.
+		if text != "" && (!needsReason || hasReason(text) || hasCommitment(text)) {
 			out = append(out, found{start: i + 1, end: end, text: text, src: src})
 		}
 		i = j
@@ -921,6 +962,22 @@ func hasReason(s string) bool {
 	return false
 }
 
+// hasCommitment reports whether a note commits to something without saying why.
+//
+// The second admission axis, kept separate from hasReason on purpose. capture.go
+// reads hasReason as a deliberately-labelled lexical floor on how often stated
+// reasoning exists at all; folding commitment into it would move that number
+// without the thing it measures having changed.
+func hasCommitment(s string) bool {
+	l := strings.ToLower(s)
+	for _, w := range commitmentWords {
+		if strings.Contains(l, w) {
+			return true
+		}
+	}
+	return false
+}
+
 // sourceFor turns a marker into the source string a record carries, so `whence
 // log` says where a decision was found. "ponytail:" stays "ponytail comment",
 // which is what the records written before the marker set already say.
@@ -946,14 +1003,73 @@ func commentBody(s string) (string, bool) {
 // firstSentence splits a note into the shortcut and the reasoning. The first
 // sentence of a ponytail note is always the corner that was cut; the rest is why
 // it was acceptable and when to revisit.
+//
+// The first ". " is not always a sentence break. A real note read "...might
+// belong to other services (e.g. <names>), but since they are used directly..."
+// and the cut landed inside the abbreviation: the decision ended mid-parenthesis
+// and stated nothing, while the why carried the entire note. That is the failure
+// splitAtReason's comment describes — the gate and the store disagreeing about
+// the same comment — one level down, with the cut point wrong rather than absent.
+//
+// So an abbreviation boundary is refused and the scan CONTINUES to the next
+// candidate, because a note that merely mentions "e.g." mid-sentence still has a
+// legitimate later break. Only if every candidate is an abbreviation does this
+// fall through to splitAtReason, and then to the whole note. It never returns an
+// empty decision.
 func firstSentence(s string) (decision, why string) {
-	if i := strings.Index(s, ". "); i >= 0 {
+	for at := 0; at+1 < len(s); {
+		i := strings.Index(s[at:], ". ")
+		if i < 0 {
+			break
+		}
+		i += at
+		if endsInAbbreviation(s[:i]) {
+			at = i + 1
+			continue
+		}
 		return s[:i+1], strings.TrimSpace(s[i+2:])
 	}
 	if d, w, ok := splitAtReason(s); ok {
 		return d, w
 	}
 	return s, ""
+}
+
+// abbreviations are the tokens that end in a period without ending a sentence.
+//
+// Deliberately small and boring, in the spirit of reasonWords: these are the ones
+// people write without thinking, and a longer list is a sentence tokeniser, which
+// is a dependency and a new class of wrong answer. A single letter is here for
+// initials ("J. Smith"), where the failure is the same and the decision would
+// otherwise be one character.
+var abbreviations = []string{"e.g", "i.e", "etc", "cf", "vs", "no"}
+
+// endsInAbbreviation reports whether the text immediately before a period is an
+// abbreviation rather than the end of a sentence.
+//
+// The token is lowercased for comparison only, never indexed — splitAtReason
+// refuses non-ASCII outright because case folding can change byte length and move
+// every offset, and that hazard is real here too. Every index used by the caller
+// comes from the original string.
+func endsInAbbreviation(before string) bool {
+	tok := before
+	if i := strings.LastIndexAny(tok, " 	"); i >= 0 {
+		tok = tok[i+1:]
+	}
+	tok = strings.TrimLeft(tok, "([{\"'`")
+	if tok == "" {
+		return false
+	}
+	if r := []rune(tok); len(r) == 1 && unicode.IsLetter(r[0]) {
+		return true // an initial: "J. Smith"
+	}
+	low := strings.ToLower(tok)
+	for _, a := range abbreviations {
+		if low == a {
+			return true
+		}
+	}
+	return false
 }
 
 // splitAtReason cuts a one-sentence note at the word that admitted it.
