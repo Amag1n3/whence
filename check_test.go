@@ -260,6 +260,9 @@ func TestGroundsLostReportsEvidenceThisDiffRemoved(t *testing.T) {
 	if got[0].ground.Ref != "dashboard.go:2-3" {
 		t.Errorf("wrong evidence reported: %q", got[0].ground.Ref)
 	}
+	if !got[0].blocking() {
+		t.Error("removed evidence must fail the build")
+	}
 
 	// Unchanged evidence is not a finding.
 	if got := groundsLostIn([]Record{r}, prior, "dashboard.go", was, was); len(got) != 0 {
