@@ -89,12 +89,12 @@ $ whence check --base origin/main
     100% of the recorded block survived before this diff, 64% now
     Retry with backoff here; the provider rate-limits per-account, not per-key.
     src/auth/session.go:88-94 · altered
-    if the rewrite kept the decision, re-point it with `why reanchor 7d31 ...`
+    if the rewrite kept the decision, re-point it with `whence reanchor 7d31 ...`
 
   ✗ src/auth/session.go — record [9c1b] lost its anchor in this change
     it anchored at 88-94 before this diff; nothing matches now
     the decision is still on record; the code it described is gone.
-    re-point it with `why reanchor 9c1b src/auth/session.go:<start>-<end>`,
+    re-point it with `whence reanchor 9c1b src/auth/session.go:<start>-<end>`,
     or retract it deliberately.
 
   2 recorded decision(s) damaged by this change, 1 more covered and intact.
@@ -143,14 +143,13 @@ $ go install github.com/Amag1n3/whence@latest
 
 Go 1.22+. `@latest` resolves to the newest tag — v0.2.0 at time of writing.
 
-Building from source works the same way and is the better option if you want
-the `why` symlink or intend to edit the code:
+Building from source works the same way and is the better option if you intend
+to edit the code:
 
 ```console
 $ git clone https://github.com/Amag1n3/whence && cd whence
 $ go build -o whence .
 $ mv whence ~/.local/bin/                        # anywhere on $PATH
-$ ln -s ~/.local/bin/whence ~/.local/bin/why     # optional short form
 ```
 
 ### One note about zsh and ksh
@@ -166,9 +165,9 @@ alias whence='command whence'
 Aliases are resolved before builtins, so that is the whole fix. `command whence`
 is also how you reach the binary in a one-off without the alias.
 
-If you use zsh's `whence` builtin and would rather not shadow it, the `why`
-symlink above runs the same binary under a name nothing competes for. **Every
-example in this README works with either name.**
+If you use zsh's `whence` builtin and would rather not shadow it, you can
+symlink the binary to any other name and use that instead. **Every example in
+this README works with either name.**
 
 bash, fish, nushell and every non-interactive context — hooks, CI, scripts —
 need nothing. They have no such builtin.

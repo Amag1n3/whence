@@ -92,8 +92,8 @@ describing them says so in present tense.
   code, not in documentation.
 - `rm` writes to a retraction log and nothing else may, because that log counts
   how often a record turned out to be *wrong*.
-- The binary is `whence`; zsh and ksh shadow it with a builtin, and a `why`
-  symlink ships for anyone who would rather not alias.
+- The binary is `whence`; zsh and ksh shadow it with a builtin. An rc alias or
+  a symlink under another name are the two escapes.
 
 **Undecided, and future work must not invent an answer:** nothing beyond the
 monetisation shape recorded below.

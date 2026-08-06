@@ -60,13 +60,12 @@ export default function InstallPage() {
           configuration, not a compiled binary.
         </P>
         <P>
-          Building from source works the same way, and is the better option if you want
-          the <M>why</M> symlink or intend to edit the code:
+          Building from source works the same way, and is the better option if you
+          intend to edit the code:
         </P>
         <Code>{`git clone ${REPO} && cd whence
 go build -o whence .
-mv whence ~/.local/bin/                        # anywhere on $PATH
-ln -s ~/.local/bin/whence ~/.local/bin/why     # optional short form`}</Code>
+mv whence ~/.local/bin/                        # anywhere on $PATH`}</Code>
         <P>
           If you have installed before, check which copy you are actually reaching. A
           hand-placed binary in <M>~/.local/bin</M> shadowing a newer <M>go install</M>{' '}
@@ -83,8 +82,9 @@ ln -s ~/.local/bin/whence ~/.local/bin/why     # optional short form`}</Code>
         <Code>{`alias whence='command whence'`}</Code>
         <P>
           Aliases resolve before builtins, so that is the whole fix. <M>command whence</M>{' '}
-          also reaches the binary in a one-off without the alias, and the <M>why</M>{' '}
-          symlink runs the same binary under a name nothing competes for.
+          also reaches the binary in a one-off without the alias. If you use zsh's{' '}
+          <M>whence</M> builtin and would rather not shadow it, symlink the binary to
+          any other name and use that instead.
         </P>
         <P>
           bash, fish, nushell and every non-interactive context — hooks, CI, scripts —

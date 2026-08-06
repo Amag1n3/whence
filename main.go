@@ -8,7 +8,7 @@
 // builtin they use. Every other shell needs nothing.
 //
 // Phase 0: records are written by hand. See "01 - Phase 0 Plan" in the vault
-// for why surfacing is built before capture.
+// for whence surfacing is built before capture.
 package main
 
 import (
@@ -140,7 +140,7 @@ type hookOut struct {
 // about it into the agent's context.
 //
 // FAIL OPEN, ALWAYS. This runs synchronously before every single Edit and Write
-// in every session. A why that is broken, misconfigured or slow must cost the
+// in every session. A whence that is broken, misconfigured or slow must cost the
 // developer nothing beyond a missing record — so every error path here exits 0
 // having printed nothing, which Claude Code reads as "no opinion".
 func hookPre() {
@@ -195,7 +195,7 @@ func hookPre() {
 //
 // ponytail: ranks live-anchors-then-newest and truncates. Real relevance ranking
 // (does this record concern the lines actually being changed?) needs a diff.
-// `why check` now exists and has one — but this is PreToolUse, which fires
+// `whence check` now exists and has one — but this is PreToolUse, which fires
 // *before* the edit, so there is no diff here to rank against and there cannot
 // be. The trigger this note used to carry ("revisit when check exists") was the
 // wrong trigger. The right one is a hook that runs after an edit: PostToolUse
@@ -300,7 +300,7 @@ func ground(g Grounded) string {
 // ponytail: this counts SURFACINGS, not caught contradictions, so it
 // over-counts — most surfacings are purely informational. Do not read this file
 // as the DECISIONS §8 falsification metric. That number now comes from
-// `why check`, which compares a diff against records; count the records it
+// `whence check`, which compares a diff against records; count the records it
 // reports and how many turned out to matter.
 func appendSurfaced(root, file string, rs []Resolved) {
 	f, err := os.OpenFile(filepath.Join(root, storeDirName, surfacedLogName),
@@ -373,7 +373,7 @@ func logAll() {
 	}
 	fmt.Println(store)
 	// A record per file here, so one read each rather than Match's one read per
-	// file. `why log` is a human typing at a terminal; the hook is the path that
+	// file. `whence log` is a human typing at a terminal; the hook is the path that
 	// has to be fast.
 	orphans, byAgent, unchecked := 0, 0, 0
 	for _, r := range rs {

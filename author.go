@@ -27,7 +27,7 @@ import (
 // --- one record ---------------------------------------------------------
 
 func addCmd(args []string) {
-	// The target comes first — `why add auth.go:142-148 -d "..."` reads the way
+	// The target comes first — `whence add auth.go:142-148 -d "..."` reads the way
 	// every other tool works. Go's flag package stops at the first positional
 	// argument, so it has to be lifted out before parsing rather than left for
 	// fl.Arg(0), which would silently drop every flag after it.
@@ -85,7 +85,7 @@ func author(asAgent bool) string {
 // capture is writing too much — fix that end, not this one.
 func confirmCmd(args []string) {
 	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, "usage: why confirm <id>")
+		fmt.Fprintln(os.Stderr, "usage: whence confirm <id>")
 		os.Exit(2)
 	}
 	store, root, rs := openStore()
@@ -344,7 +344,7 @@ func buildEvidence(root string, refs []string) ([]Evidence, error) {
 }
 
 func addUsage() {
-	fmt.Fprintln(os.Stderr, `usage: why add <file>:<start>-<end> -d "decision" [-w "why"] [-s source]`)
+	fmt.Fprintln(os.Stderr, `usage: whence add <file>:<start>-<end> -d "decision" [-w "why"] [-s source]`)
 	os.Exit(2)
 }
 
@@ -531,7 +531,7 @@ func save(path string, rs []Record) error {
 // newID derives a short id from the record's own content.
 //
 // Was 4 hex chars, matching the #4f2a shape in the README, on the grounds that
-// nothing keyed off an id so a collision was cosmetic. `why check` cites ids in
+// nothing keyed off an id so a collision was cosmetic. `whence check` cites ids in
 // CI output, where a human reads one and looks it up — a duplicate stops being
 // cosmetic there. Widened to 6 on that trigger, which the record covering this
 // function named as its own condition.
@@ -572,7 +572,7 @@ func splitSpan(s string) (file string, start, end int) {
 
 // rmCmd deletes a record by id.
 //
-// Exists because `why check` tells you an orphaned record must be re-anchored or
+// Exists because `whence check` tells you an orphaned record must be re-anchored or
 // deleted deliberately, and advice you cannot act on is worse than none. Deleting
 // is the honest end of an orphan's life: the code a decision described is gone,
 // so either the decision moved (re-add it, anchored to where it lives now) or it
@@ -589,7 +589,7 @@ func splitSpan(s string) (file string, start, end int) {
 // turned out to be wrong, which means a deletion cannot be silent.
 func rmCmd(args []string) {
 	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
-		fmt.Fprintln(os.Stderr, `usage: why rm <id> [-w "why it was wrong"]`)
+		fmt.Fprintln(os.Stderr, `usage: whence rm <id> [-w "why it was wrong"]`)
 		os.Exit(2)
 	}
 	id := args[0]

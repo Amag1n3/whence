@@ -592,9 +592,9 @@ export const FAQ: Cluster[] = [
             zsh and ksh ship a <C>whence</C> builtin, and builtins beat <C>$PATH</C>.
             Aliases are resolved before builtins, so <C>alias whence=&apos;command
             whence&apos;</C> in your rc file is the entire fix, and <C>command whence</C>{' '}
-            works for a one-off. A <C>why</C> symlink is available if you would rather not
-            shadow a builtin you use. bash, fish, hooks and CI need nothing — they have no
-            such builtin.
+            works for a one-off. If you would rather not shadow a builtin you use,
+            symlink the binary to any other name. bash, fish, hooks and CI need
+            nothing — they have no such builtin.
           </>
         ),
       },
@@ -755,8 +755,8 @@ export const FAQ: Cluster[] = [
         a: (
           <>
             <C>go install github.com/Amag1n3/whence@latest</C>, on Go 1.22 or newer.
-            Building from a clone works too and is the better path if you want the{' '}
-            <C>why</C> symlink or intend to edit the code.
+            Building from a clone works too and is the better path if you intend to
+            edit the code.
           </>
         ),
       },
