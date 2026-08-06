@@ -233,7 +233,7 @@ func TestAnchorLineOnlyWithoutHashes(t *testing.T) {
 
 // --- through Match ------------------------------------------------------
 
-// The payoff: `why file:187` has to find a record that was written about line
+// The payoff: `whence file:187` has to find a record that was written about line
 // 142 and has since drifted there. Matching on the recorded range would miss it,
 // which is the whole reason anchoring exists.
 func TestMatchFindsDriftedRecordAtItsNewLine(t *testing.T) {

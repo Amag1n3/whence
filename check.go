@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-// `why check` — the CI gate.
+// `whence check` — the CI gate.
 //
 // It compares a diff against the records covering the lines that diff touches
 // and reports what it finds. Only some of that is worth an exit code, and
@@ -147,7 +147,7 @@ func checkCmd(args []string) {
 		fmt.Printf(", %d more covered and intact", intact)
 	}
 	fmt.Printf(".\nwhence does not judge the change — it reports what became of the record.\n" +
-		"Re-point each with `why reanchor`, or retract it deliberately.\n")
+		"Re-point each with `whence reanchor`, or retract it deliberately.\n")
 	os.Exit(1)
 }
 
@@ -190,7 +190,7 @@ func inspect(rs []Record, prior map[string]bool, file string, now, was []string,
 		}
 		// Only records that existed in the base revision. A record added by this
 		// very diff is not a prior decision the change could be walking into —
-		// and without this, any pull request that uses `why add` fails its own
+		// and without this, any pull request that uses `whence add` fails its own
 		// gate, which is the fastest way to teach a team to ignore the gate.
 		if !prior[r.ID] {
 			continue
@@ -299,7 +299,7 @@ func report(f finding) {
 		// Deliberately not pre-filled with the span above. That span is a
 		// best-match window, and a command you can paste without reading is a
 		// command that stores a guess as a certainty.
-		fmt.Printf("    if the rewrite kept the decision, re-point it with `why reanchor %s %s:<start>-<end>`.\n",
+		fmt.Printf("    if the rewrite kept the decision, re-point it with `whence reanchor %s %s:<start>-<end>`.\n",
 			f.r.ID, f.r.File)
 		return
 	}
@@ -311,7 +311,7 @@ func report(f finding) {
 			fmt.Printf("    why: %s\n", f.r.Why)
 		}
 		fmt.Printf("    the decision is still on record; the code it described is gone.\n")
-		fmt.Printf("    re-point it with `why reanchor %s %s:<start>-<end>`, or retract it deliberately.\n",
+		fmt.Printf("    re-point it with `whence reanchor %s %s:<start>-<end>`, or retract it deliberately.\n",
 			f.r.ID, f.r.File)
 		return
 	}

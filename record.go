@@ -230,7 +230,7 @@ func Load(path string) ([]Record, error) {
 // every record on the file is relevant. A specific line narrows to records whose
 // span contains it — the span they point at NOW, which is the entire reason
 // anchoring exists. A record that drifted from 142 to 187 has to answer to
-// `why file.go:187`, not to the line it was born on.
+// `whence file.go:187`, not to the line it was born on.
 //
 // root is where record paths are relative to, as reported by FindStore. It is
 // only used to read the file back for anchoring, so a caller with no root (a
