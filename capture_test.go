@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -128,9 +129,45 @@ func TestEditsInOtherReposAreCountedNotDropped(t *testing.T) {
 	}
 }
 
-// The span is proposed only when the block is still there, byte for byte. A
-// best-match window would be a guess wearing a measurement's clothes, which is
-// the failure resolveAnchor exists to prevent — so this reports nothing instead.
+// The surprise signal (§22.5): a reason-bearing statement follows something
+// unexpected, and the cheap reliable marker of that is the tool result that
+// preceded the edit — machine output, where "FAIL" means FAIL. The reason-word
+// floor lies about prose; this is not vocabulary about prose at all.
+func TestFollowsSurprise(t *testing.T) {
+	cases := []struct {
+		res  string
+		want bool
+	}{
+		{"", false},
+		{"ok", false},
+		{"--- FAIL: TestRetry", true},
+		{"panic: runtime error", true},
+		{"exit status 1", true},
+		{"cannot find package", false}, // a miss, not a garbage record
+	}
+	for _, c := range cases {
+		if got := followsSurprise(c.res); got != c.want {
+			t.Errorf("followsSurprise(%q) = %v, want %v", c.res, got, c.want)
+		}
+	}
+}
+
+// toolResultText must read both shapes a tool result takes: a bare string and
+// an array of blocks.
+func TestToolResultText(t *testing.T) {
+	raw := json.RawMessage(`[{"type":"tool_result","content":"--- FAIL: TestRetry"}]`)
+	if got := toolResultText(raw); got != "--- FAIL: TestRetry" {
+		t.Errorf("string content = %q", got)
+	}
+	raw = json.RawMessage(`[{"type":"tool_result","content":[{"type":"text","text":"--- FAIL"}]}]`)
+	if got := toolResultText(raw); got != "--- FAIL" {
+		t.Errorf("block content = %q", got)
+	}
+	if got := toolResultText(json.RawMessage(`[{"type":"thinking","thinking":""}]`)); got != "" {
+		t.Errorf("non-result content = %q, want empty", got)
+	}
+}
+
 func TestLocateSpanRefusesToGuess(t *testing.T) {
 	lines := []string{
 		"package api",

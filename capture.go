@@ -27,11 +27,13 @@ package main
 // it. A capture that wrote records would be answering it by assumption.
 //
 // ponytail: pairs each edit with the nearest preceding assistant message and the
-// user turn before it. No relevance model, no filtering, no scoring. That is
-// deliberate and it is the reason this is worth running: the shape of a real
-// filter should come from reading a few hundred true pairs, not from guessing
-// now. Upgrade path is a model pass over these pairs — which breaks the
-// stdlib-only rule, so it is a decision to take on purpose, not to drift into.
+// user turn before it. Filtering stays minimal: one label — "did a failed tool
+// result precede this edit" (followsSurprise) — reported as a count in the
+// footer. That is the cheap half of §22.5's surprise signal, and the rest, a
+// real filter, should come from reading a few hundred true pairs, not from
+// guessing now. Upgrade path is a model pass over these pairs — which breaks
+// the stdlib-only rule, so it is a decision to take on purpose, not to drift
+// into.
 
 import (
 	"encoding/json"
@@ -56,10 +58,11 @@ type transcriptEntry struct {
 
 // contentBlock is one element of a message's content array.
 type contentBlock struct {
-	Type  string `json:"type"`
-	Text  string `json:"text"`
-	Name  string `json:"name"`
-	Input struct {
+	Type    string          `json:"type"`
+	Text    string          `json:"text"`
+	Name    string          `json:"name"`
+	Content json.RawMessage `json:"content"` // tool_result payload; a string or blocks
+	Input   struct {
 		FilePath  string `json:"file_path"`
 		NewString string `json:"new_string"` // Edit
 		Content   string `json:"content"`    // Write
@@ -68,12 +71,13 @@ type contentBlock struct {
 
 // moment is one edit and the reasoning standing next to it in the session.
 type moment struct {
-	At    string // RFC3339, as the transcript recorded it
-	File  string // absolute, as the tool reported it
-	Tool  string // Edit or Write
-	Text  string // what the edit put into the file
-	Asked string // the user turn that preceded it
-	Said  string // the assistant's last prose before the tool call
+	At     string // RFC3339, as the transcript recorded it
+	File   string // absolute, as the tool reported it
+	Tool   string // Edit or Write
+	Text   string // what the edit put into the file
+	Asked  string // the user turn that preceded it
+	Said   string // the assistant's last prose before the tool call
+	Result string // the last tool result before the edit, capped
 }
 
 func captureCmd(args []string) {
@@ -104,7 +108,7 @@ func captureCmd(args []string) {
 		return
 	}
 
-	located, reasoned := 0, 0
+	located, reasoned, surprised := 0, 0, 0
 	for _, m := range ms {
 		start, end := locateSpan(fileLines(m.File), m.Text)
 		where := shortPath(m.File)
@@ -119,6 +123,9 @@ func captureCmd(args []string) {
 		}
 		if hasReason(m.Said) {
 			reasoned++
+		}
+		if followsSurprise(m.Result) {
+			surprised++
 		}
 
 		fmt.Printf("\n  ● %s · %s · %s\n", m.At, m.Tool, where)
@@ -150,8 +157,12 @@ func captureCmd(args []string) {
 	// So the number is a floor and says so. Naming the conclusion when only the
 	// proxy was measured is the same error as printing a confidence score that
 	// was never taken — see the integrity rule in main.go.
-	fmt.Printf("\n%d edit(s) · %d with a current span · %d with a reason word (lexical floor), %d without\n",
-		len(ms), located, reasoned, len(ms)-reasoned)
+	//
+	// The surprise count is the §22.5 reading, separate from the reason-word
+	// floor: it does not claim the reason is real, only that something
+	// unexpected preceded the edit, which is the shape a real reason takes.
+	fmt.Printf("\n%d edit(s) · %d with a current span · %d with a reason word (lexical floor), %d without · %d after a failed tool result (surprise signal)\n",
+		len(ms), located, reasoned, len(ms)-reasoned, surprised)
 	reportElsewhere(elsewhere)
 	fmt.Println("nothing was written; capture proposes, it does not record")
 }
@@ -264,11 +275,12 @@ func readTrail(path string) ([]moment, error) {
 	defer f.Close()
 
 	var (
-		ms     []moment
-		asked  string
-		said   string
-		dec    = json.NewDecoder(f)
-		writes = map[string]bool{"Edit": true, "Write": true, "NotebookEdit": true}
+		ms         []moment
+		asked      string
+		said       string
+		lastResult string
+		dec        = json.NewDecoder(f)
+		writes     = map[string]bool{"Edit": true, "Write": true, "NotebookEdit": true}
 	)
 	for {
 		var e transcriptEntry
@@ -285,6 +297,11 @@ func readTrail(path string) ([]moment, error) {
 			var s string
 			if json.Unmarshal(e.Message.Content, &s) == nil && strings.TrimSpace(s) != "" {
 				asked, said = s, ""
+			} else if res := toolResultText(e.Message.Content); res != "" {
+				// The surprise signal (§22.5): what happened right before the
+				// edit. A tool result is machinery, not words, but its failure
+				// is the most reliable marker there is.
+				lastResult = res
 			}
 			continue
 		}
@@ -309,17 +326,80 @@ func readTrail(path string) ([]moment, error) {
 					continue
 				}
 				ms = append(ms, moment{
-					At:    e.Timestamp,
-					File:  b.Input.FilePath,
-					Tool:  b.Name,
-					Text:  text,
-					Asked: asked,
-					Said:  said,
+					At:     e.Timestamp,
+					File:   b.Input.FilePath,
+					Tool:   b.Name,
+					Text:   text,
+					Asked:  asked,
+					Said:   said,
+					Result: lastResult,
 				})
 			}
 		}
 	}
 	return ms, nil
+}
+
+// toolResultText pulls the text out of a tool_result block. The content is
+// either a string or an array of blocks; whatever is not text is dropped,
+// because the surprise signal lives in what a tool actually reported.
+func toolResultText(raw json.RawMessage) string {
+	var bs []contentBlock
+	if err := json.Unmarshal(raw, &bs); err != nil {
+		return ""
+	}
+	for _, b := range bs {
+		if b.Type != "tool_result" || len(b.Content) == 0 {
+			continue
+		}
+		var s string
+		if json.Unmarshal(b.Content, &s) == nil {
+			return s
+		}
+		var inner []contentBlock
+		if err := json.Unmarshal(b.Content, &inner); err != nil {
+			continue
+		}
+		var sb strings.Builder
+		for _, t := range inner {
+			if t.Type == "text" {
+				sb.WriteString(t.Text)
+			}
+		}
+		return sb.String()
+	}
+	return ""
+}
+
+// followsSurprise reports whether a tool result looked like a failure.
+//
+// §22.5's finding, measured: every reason-bearing statement in the corpus
+// follows something unexpected — a failing test, a wrong fixture, --help
+// walking a path. Announcements introduce runs of edits executing an
+// already-agreed plan. So the cheap, reliable filter is not vocabulary in the
+// prose (that is hasReason's job, and it lies about prose); it is what the
+// tool result that preceded the edit said.
+//
+// ponytail: marker list on machine output, where the words mean what they
+// say — "FAIL", "panic", "exit status" are not ordinary vocabulary in tool
+// output the way "reason" is in prose. Widen only against real misses from a
+// real session, never by imagining phrasings.
+func followsSurprise(res string) bool {
+	for _, m := range surpriseMarkers {
+		if strings.Contains(res, m) {
+			return true
+		}
+	}
+	return false
+}
+
+// surpriseMarkers are what a failed tool result looks like. Narrow on
+// purpose, in the spirit of reasonWords: a miss is recoverable (the human
+// reads the pair anyway), and a list that fires on every tool result would
+// reclassify the whole corpus as surprise, which is the same lie the
+// over-counting footer told.
+var surpriseMarkers = []string{
+	"FAIL", "panic", "exit status", "Error", "error:",
 }
 
 // locateSpan reports where text sits in lines now, or 0,0 if it does not.
