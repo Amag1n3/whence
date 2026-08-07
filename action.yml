@@ -57,8 +57,9 @@ runs:
         PRBase: ${{ github.event.pull_request.base.ref }}
         DefaultBranch: ${{ github.event.repository.default_branch }}
       run: |
-        # No ${{ }} interpolation in this run block — values arrive through
-        # env, so a crafted branch name is data to git, never a shell word.
+        # No template interpolation in this run block — values arrive
+        # through env, so a crafted branch name is data to git, never a
+        # shell word.
         base="${Base:-${PRBase:-$DefaultBranch}}"
         git fetch --no-tags --depth=1 origin "+refs/heads/${base}:refs/remotes/origin/${base}" || true
         whence check --base "origin/${base}"
