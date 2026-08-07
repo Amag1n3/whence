@@ -39,14 +39,14 @@ runs:
     # the FAQ because a shallow clone is the one misconfiguration that makes
     # the gate say nothing.
     - name: Install whence (release)
-      if: ${{ inputs.from-source != 'true' }}
+      if: inputs.from-source != 'true'
       shell: bash
       env:
         WVersion: ${{ inputs.version }}
       run: go install github.com/Amag1n3/whence@"$WVersion"
 
     - name: Install whence (from this checkout)
-      if: ${{ inputs.from-source == 'true' }}
+      if: inputs.from-source == 'true'
       shell: bash
       run: go install .
 
