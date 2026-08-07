@@ -1,6 +1,11 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+)
 
 // Diff parsing is the fragile part of check: get a hunk header wrong and the gate
 // either misses every change or flags the whole file. `--unified=0` is what keeps
@@ -275,5 +280,39 @@ func TestGroundsLostReportsEvidenceThisDiffRemoved(t *testing.T) {
 	// And a record the diff itself introduced is not a prior decision.
 	if got := groundsLostIn([]Record{r}, map[string]bool{}, "dashboard.go", now, was); len(got) != 0 {
 		t.Errorf("a record absent from base must not be reported, got %d", len(got))
+	}
+}
+
+// The gate silences itself if it cannot read the base revision's store. The
+// store has been one-record-per-line since the format change, and priorIDs
+// parsed only the legacy array — so every record looked absent from base, and
+// check reported "no records cover this diff" for any damage at all. This is
+// the regression that kept the gate from ever firing.
+func TestPriorIDsReadsLineDelimitedStore(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	runGit(t, dir, "init", "-q", "-b", "main", ".")
+	writeFile(t, dir, "a.go", []string{"package a"})
+	store := filepath.Join(dir, storeDirName, recordsFileName)
+	if err := os.MkdirAll(filepath.Dir(store), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, dir, filepath.Join(storeDirName, recordsFileName),
+		[]string{`{"id":"r1","file":"a.go","line_start":1,"line_end":1,"decision":"d"}`})
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base")
+
+	ids := priorIDs(dir, "HEAD", store)
+	if !ids["r1"] {
+		t.Fatalf("a record in the base store must be read as prior; got %v", ids)
+	}
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
 }

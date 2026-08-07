@@ -379,7 +379,7 @@ func logAll() {
 	for _, r := range rs {
 		res := Resolved{
 			Record:  r,
-			Anchor:  resolveAnchor(fileLines(filepath.Join(root, r.File)), r),
+			Anchor:  resolveAnchor(fileLinesWithin(filepath.Join(root, r.File), root), r),
 			Grounds: resolveEvidence(root, r),
 		}
 		print1(res)

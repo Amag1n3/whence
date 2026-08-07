@@ -1,0 +1,64 @@
+name: whence
+description: >-
+  Fail the build when a change damages a recorded decision's anchor. Wraps
+  `whence check`: it diffs the pull request against its base and reports any
+  record whose anchor was eroded or lost, or whose evidence was deleted. It
+  reports what became of the record — it never judges the change.
+author: Amag1n3
+branding:
+  icon: anchor
+  color: orange
+
+inputs:
+  base:
+    description: >-
+      Revision to diff against. Defaults to the pull request's base branch, or
+      the default branch on a push.
+    required: false
+    default: ""
+  version:
+    description: whence version to install (a tag, or "latest").
+    required: false
+    default: "latest"
+  from-source:
+    description: >-
+      Build the binary from the checked-out source instead of installing a
+      release. whence's own repository sets this so the gate runs the code in
+      the pull request, not a release that predates it.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    # The whole product is the exit code of `whence check`, and check compares
+    # against the base revision — the base copy of both the file and the store
+    # — to tell "this diff broke the anchor" from "the anchor was already
+    # broken". That comparison is impossible without history, so the caller's
+    # checkout step must run with fetch-depth: 0. It is named in the README and
+    # the FAQ because a shallow clone is the one misconfiguration that makes
+    # the gate say nothing.
+    - name: Install whence (release)
+      if: ${{ inputs.from-source != 'true' }}
+      shell: bash
+      env:
+        WVersion: ${{ inputs.version }}
+      run: go install github.com/Amag1n3/whence@"$WVersion"
+
+    - name: Install whence (from this checkout)
+      if: ${{ inputs.from-source == 'true' }}
+      shell: bash
+      run: go install .
+
+    - name: Gate
+      shell: bash
+      env:
+        Base: ${{ inputs.base }}
+        PRBase: ${{ github.event.pull_request.base.ref }}
+        DefaultBranch: ${{ github.event.repository.default_branch }}
+      run: |
+        # No ${{ }} interpolation in this run block — values arrive through
+        # env, so a crafted branch name is data to git, never a shell word.
+        base="${Base:-${PRBase:-$DefaultBranch}}"
+        git fetch --no-tags --depth=1 origin "+refs/heads/${base}:refs/remotes/origin/${base}" || true
+        whence check --base "origin/${base}"

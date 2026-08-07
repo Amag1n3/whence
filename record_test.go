@@ -256,3 +256,39 @@ func TestSplitTarget(t *testing.T) {
 		}
 	}
 }
+
+// The hash-oracle guard: a record's File comes from a pulled store, so a path
+// that escapes the repo root must never be read. The macOS case is the trap —
+// t.TempDir returns a symlink-resolved path while a repo reached via /tmp does
+// not — and a lexical comparison across that boundary cannot tell inside from
+// outside. This is the regression that let the guard pass silently.
+func TestOutsideRoot(t *testing.T) {
+	root := t.TempDir()
+	inside := filepath.Join(root, "a.go")
+	if err := os.WriteFile(inside, []byte("package a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(filepath.Dir(root), "outside-"+filepath.Base(root)+".go")
+	if err := os.WriteFile(outside, []byte("package o\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(outside)
+
+	if outsideRoot(inside, root) {
+		t.Errorf("a file inside the root must not read as outside: %q", inside)
+	}
+	if !outsideRoot(outside, root) {
+		t.Errorf("a sibling of the root must read as outside: %q", outside)
+	}
+	// The crafted-store case: a ".."-climbing path handed to the read guard.
+	if !outsideRoot(filepath.Join(root, "..", "..", "etc", "hosts"), root) {
+		t.Error("a ../.. path must read as outside")
+	}
+	// fileLinesWithin must refuse the outside read outright.
+	if got := fileLinesWithin(outside, root); got != nil {
+		t.Error("fileLinesWithin must not read a file outside the root")
+	}
+	if got := fileLinesWithin(inside, root); got == nil {
+		t.Error("fileLinesWithin must read a file inside the root")
+	}
+}

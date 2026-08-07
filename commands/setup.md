@@ -50,8 +50,16 @@ whence backfill
 
 That reads `HACK:` `WORKAROUND:` `XXX:` `GOTCHA:` `ponytail:` comments always,
 and `NOTE:` `TODO:` `FIXME:` `WARNING:` `CAVEAT:` only where the note gives a
-reason. Show the user what it found and let them delete anything they disagree
-with — the store is committed and shared, so a bad record costs more than a
+reason. It is a dry run by default — it shows what it found and writes nothing,
+because the store is committed and shared. Show the user the list, and only when
+they agree does it get written:
+
+```
+whence backfill --yes
+```
+
+Anything matching a credential shape is refused outright, so a key sitting in a
+comment is never copied into the store. A bad record still costs more than a
 missing one.
 
 ## 3. Is the hook actually firing?

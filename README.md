@@ -233,7 +233,8 @@ A store with no records is a tool that does nothing, so start by harvesting what
 is already written down:
 
 ```console
-$ whence backfill              # decision comments under the current directory
+$ whence backfill              # show the decision comments it found — writes nothing
+$ whence backfill --yes        # store them
 $ whence log                   # what you now have
 ```
 

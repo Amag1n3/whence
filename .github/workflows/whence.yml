@@ -20,19 +20,23 @@ jobs:
 
   check:
     # The gate on itself. whence's own decisions live in .whence/records.jsonl, so
-    # this repo is the first place the CI story has to hold up.
+    # this repo is the first place the CI story has to hold up — and it has to
+    # hold up through the same Action everyone else installs.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          # fetch-depth: 0 is not optional. `why check` diffs against a base ref
-          # and reads the base revision of both the store and the cited files;
-          # a shallow clone has neither, and check would pass by finding nothing.
+          # fetch-depth: 0 is not optional. `whence check` diffs against a base
+          # ref and reads the base revision of both the store and the cited
+          # files; a shallow clone has neither, and check would pass by finding
+          # nothing.
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
-      - run: go build -o whence .
-      - name: recorded decisions covering this diff
-        run: ./whence check -base origin/${{ github.base_ref }}
+      # The gate runs the code in this pull request, not a release that
+      # predates it — from-source builds the checked-out tree.
+      - uses: ./
+        with:
+          from-source: "true"
