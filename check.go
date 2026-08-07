@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -418,8 +417,8 @@ func priorIDs(root, base, store string) map[string]bool {
 	if err != nil {
 		return nil
 	}
-	var rs []Record
-	if err := json.Unmarshal([]byte(out), &rs); err != nil {
+	rs, err := parseStore([]byte(out), rel)
+	if err != nil {
 		return nil
 	}
 	ids := make(map[string]bool, len(rs))

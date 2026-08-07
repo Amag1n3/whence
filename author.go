@@ -383,12 +383,6 @@ func add(file string, start, end int, decision, why, source, author string, evid
 	if err != nil {
 		return Resolved{}, "", err
 	}
-	lines := fileLines(abs)
-	hashes, err := anchorSpan(lines, file, start, end)
-	if err != nil {
-		return Resolved{}, "", err
-	}
-
 	store, root, ok := FindStore(abs)
 	if !ok {
 		if store, root, err = createStore(); err != nil {
@@ -396,6 +390,32 @@ func add(file string, start, end int, decision, why, source, author string, evid
 		}
 		fmt.Println("created", filepath.Join(root, storeDirName))
 	}
+
+	// A record can only concern a file inside its own repo — outside it there
+	// is nothing to anchor to, and an outside file must not even be READ on a
+	// crafted record's say-so (the anchor verdict is a one-bit hash oracle).
+	// This check has to precede the read below: anchorSpan hashes the file, so
+	// asking "is this mine to read" after reading it answers too late.
+	if outsideRoot(abs, root) {
+		return Resolved{}, "", fmt.Errorf("whence: %s is outside the repo rooted at %s", file, root)
+	}
+
+	// The store is committed and shared, so a record is a public artifact. A
+	// decision or reason containing a secret-shaped string — a key pasted into a
+	// comment, then harvested — becomes a public commit, and git history is
+	// append-only, so there is no taking it back. Refuse at the one admission
+	// point every record passes through. The match is never printed: naming the
+	// shape would re-transcribe the secret into the terminal.
+	if secretShape(decision) || secretShape(why) {
+		return Resolved{}, "", fmt.Errorf("whence: %s:%d — the text looks like it holds a credential (a key or token shape); refusing to commit it to a shared store. Rephrase without the secret", file, start)
+	}
+
+	lines := fileLinesWithin(abs, root)
+	hashes, err := anchorSpan(lines, file, start, end)
+	if err != nil {
+		return Resolved{}, "", err
+	}
+
 	rs, err := Load(store)
 	if err != nil {
 		return Resolved{}, "", err
@@ -660,9 +680,19 @@ func appendRetracted(root string, r Record, reason string) {
 // the comment. Git history and ADR docs are the same trick against messier
 // input, and they come next.
 func backfillCmd(args []string) {
+	fl := flag.NewFlagSet("backfill", flag.ExitOnError)
+	// The store is committed and shared, so harvesting is content capture and
+	// content capture is opt-in (§7.2). The default shows what would be stored
+	// and writes nothing; --yes is the explicit act of committing it. A secret
+	// sitting in a comment is the case this exists for — show it to a human
+	// before it becomes a public commit, because git history is append-only.
+	write := fl.Bool("yes", false, "write the harvested records to the store (default shows them without writing)")
+	if err := fl.Parse(args); err != nil {
+		os.Exit(2)
+	}
 	dir := "."
-	if len(args) > 0 {
-		dir = args[0]
+	if fl.NArg() > 0 {
+		dir = fl.Arg(0)
 	}
 	abs, err := filepath.Abs(dir)
 	if err != nil {
@@ -679,7 +709,7 @@ func backfillCmd(args []string) {
 		os.Exit(1)
 	}
 
-	added, skipped := 0, 0
+	added, skipped, shown := 0, 0, 0
 	err = filepath.WalkDir(abs, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil // an unreadable directory is not a reason to stop
@@ -707,6 +737,14 @@ func backfillCmd(args []string) {
 					continue
 				}
 			}
+			if !*write {
+				// Dry run: name what was found and where, and nothing more.
+				// The decision text is shown so a human can read it for the
+				// secret this gate exists to catch before it is committed.
+				fmt.Printf("  would add  %s:%d-%d  %s\n", rel, f.start, f.end, decision)
+				shown++
+				continue
+			}
 			r, _, err := add(p, f.start, f.end, decision, why, f.src, authorHuman, nil)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "whence: %s:%d — %v\n", rel, f.start, err)
@@ -720,6 +758,10 @@ func backfillCmd(args []string) {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "whence:", err)
 		os.Exit(1)
+	}
+	if !*write {
+		fmt.Printf("\n%d record(s) found, %d already present — nothing written. Rerun with --yes to store them.\n", shown, skipped)
+		return
 	}
 	fmt.Printf("\n%d record(s) added, %d already present\n", added, skipped)
 }
@@ -797,20 +839,52 @@ var (
 		"ensures", "guarantees", "maintains",
 		"must stay", "must match", "must remain", "must be identical",
 	}
-
-	// splitWords are the subset of reasonWords that mark WHERE the reason
-	// starts, for splitting a one-sentence note into its two halves.
-	//
-	// "reason" and "caused" are deliberately absent. Both occur as an ordinary
-	// noun and verb in the middle of a clause — "the reason code is duplicated",
-	// "the leak caused by this" — where cutting at them yields two fragments and
-	// no decision. They remain fine evidence that a note explains itself, which
-	// is a different question from where the explanation begins.
-	splitWords = []string{
-		"because", "so that", "otherwise", "since", "to avoid",
-		"rather than", "instead of",
-	}
 )
+
+// secretShapes are the prefixes of credentials that end up pasted into
+// comments. The list is deliberately the well-known token formats, not an
+// entropy guess: a false positive here refuses a legitimate record into a
+// shared store, which is annoying; a false negative commits a key, which is
+// unrecoverable. Both args point the same way, so the bias is to recall on the
+// shapes that are unambiguous, and to say "rephrase" rather than guess harder.
+//
+// ponytail: prefix/format match only, no entropy scoring and no per-provider
+// checksum. That misses rotated or homemade secret formats; widen only against
+// a real leak that had a shape this list does not carry, never by imagining.
+var secretShapes = []string{
+	"sk-", "sk_live_", "sk_test_", // OpenAI / Stripe-style secret keys
+	"ghp_", "gho_", "ghu_", "github_pat_", // GitHub tokens
+	"glpat-",                                    // GitLab
+	"xoxb-", "xoxp-", "xoxa-", "xoxr-", "xoxs-", // Slack
+	"AKIA", "ASIA", // AWS access key ids
+	"AIza",       // Google API keys
+	"-----BEGIN", // PEM private keys and certificates
+}
+
+// secretShape reports whether text contains a credential-shaped token. The
+// caller never prints the match — naming the shape would re-transcribe the
+// secret it is trying to keep out of a committed store.
+func secretShape(text string) bool {
+	for _, s := range secretShapes {
+		if strings.Contains(text, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// splitWords are the subset of reasonWords that mark WHERE the reason
+// starts, for splitting a one-sentence note into its two halves.
+//
+// "reason" and "caused" are deliberately absent. Both occur as an ordinary
+// noun and verb in the middle of a clause — "the reason code is duplicated",
+// "the leak caused by this" — where cutting at them yields two fragments and
+// no decision. They remain fine evidence that a note explains itself, which
+// is a different question from where the explanation begins.
+var splitWords = []string{
+	"because", "so that", "otherwise", "since", "to avoid",
+	"rather than", "instead of",
+}
 
 var skipDir = map[string]bool{
 	".git": true, storeDirName: true, "node_modules": true,

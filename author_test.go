@@ -235,8 +235,16 @@ func TestBackfillIsIdempotent(t *testing.T) {
 	chdir(t, dir)
 	writeFile(t, dir, "bank.go", noted)
 
+	// The default is a dry run: it shows what it would store and writes
+	// nothing, because the store is committed and shared (§7.2).
 	backfillCmd([]string{"."})
 	store := filepath.Join(dir, storeDirName, recordsFileName)
+	if rs, err := Load(store); err != nil || len(rs) != 0 {
+		t.Fatalf("a dry run must write nothing, got %d records (%v)", len(rs), err)
+	}
+
+	// --yes is the explicit opt-in that actually writes.
+	backfillCmd([]string{"--yes", "."})
 	first, err := Load(store)
 	if err != nil {
 		t.Fatal(err)
@@ -248,13 +256,36 @@ func TestBackfillIsIdempotent(t *testing.T) {
 		t.Errorf("source should mark where it came from, got %q", first[0].Source)
 	}
 
-	backfillCmd([]string{"."})
+	backfillCmd([]string{"--yes", "."})
 	second, err := Load(store)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(second) != 1 {
 		t.Errorf("a second run must add nothing, got %d records", len(second))
+	}
+}
+
+// A secret-shaped string in a harvested comment must never reach a committed
+// store. The refusal is in add, so it covers backfill and `whence add` alike.
+func TestSecretShapeRefused(t *testing.T) {
+	for _, text := range []string{
+		"hardcode key sk-abc123 because vault is down",
+		"token ghp_XYZ for the deploy",
+		"AWS AKIAIOSFODNN7EXAMPLE left in",
+		"-----BEGIN PRIVATE KEY----- oops",
+	} {
+		if !secretShape(text) {
+			t.Errorf("should refuse a secret shape: %q", text)
+		}
+	}
+	for _, text := range []string{
+		"cache the lookup because the upstream 502s",
+		"norm() here MUST stay identical to the worker",
+	} {
+		if secretShape(text) {
+			t.Errorf("a legitimate decision must not be refused: %q", text)
+		}
 	}
 }
 

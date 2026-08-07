@@ -158,7 +158,7 @@ func resolveEvidence(root string, r Record) []Grounded {
 	for _, e := range r.Evidence {
 		g := Grounded{Evidence: e}
 		if e.anchored() {
-			g.Anchor = resolveAnchor(fileLines(filepath.Join(root, e.File)), e.asRecord())
+			g.Anchor = resolveAnchor(fileLinesWithin(filepath.Join(root, e.File), root), e.asRecord())
 		}
 		out = append(out, g)
 	}
@@ -168,7 +168,30 @@ func resolveEvidence(root string, r Record) []Grounded {
 // fileLines reads a file into 1-indexed-by-convention lines. An unreadable file
 // yields nil, which resolveAnchor reads as "orphaned" — the file being gone is
 // a legitimate answer, not an error to propagate.
+//
+// A record's File and its evidence File come from the store, and the store is
+// pulled: a record claiming "../../etc/hosts" must not be READ, let alone
+// resolved. Contents are never printed, so it is not exfiltration — but the
+// intact/orphaned verdict is a one-bit hash oracle on any file on the machine,
+// asked silently on every edit (§7 threat model: pulled records are untrusted).
+// The guard lives in the one place every anchor read passes through, so no
+// caller can route around it.
+//
+// ponytail: lexical guard only — a symlink inside the repo pointing out is not
+// resolved here. That path needs an attacker who can commit a symlink into the
+// repo, a much higher bar than a record line; upgrade to filepath.EvalSymlinks
+// if a pulled store ever carries one.
 func fileLines(path string) []string {
+	return fileLinesWithin(path, "")
+}
+
+// fileLinesWithin is fileLines plus the repo root the path must stay inside.
+// Records are written root-relative (Rel), so a stored path that resolves
+// outside root was crafted, not authored.
+func fileLinesWithin(path, root string) []string {
+	if outsideRoot(path, root) {
+		return nil
+	}
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil

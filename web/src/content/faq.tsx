@@ -513,13 +513,14 @@ export const FAQ: Cluster[] = [
         q: 'Will it commit a secret my agent saw?',
         a: (
           <>
-            Nothing is captured automatically today, so the only way a secret enters the
-            store is if you type it into a record or it sits in a comment that{' '}
-            <C>backfill</C> harvests. Backfill stores the comment text verbatim, so a
-            comment containing a live key would be copied into a file meant to be committed
-            — worth knowing before running it across an unfamiliar repository. Redaction
-            belongs at capture, before the write, because git history is effectively
-            append-only and deleting the file later is not recovery.
+            The only automatic capture today is <C>backfill</C>, and it no longer writes
+            on sight: it runs as a dry run that shows you what it found, and only stores
+            on an explicit <C>--yes</C>. On top of that, any text that matches a
+            credential shape — an API key, a token, a private key header — is refused
+            outright, so a live key in a comment is not copied into a file meant to be
+            committed. Both guards exist because git history is effectively append-only
+            and deleting the file later is not recovery. Redaction still belongs at
+            capture, before the write, for the day capture starts writing records itself.
           </>
         ),
       },

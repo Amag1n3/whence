@@ -193,10 +193,18 @@ func Load(path string) ([]Record, error) {
 		return nil, err
 	}
 
+	return parseStore(b, path)
+}
+
+// parseStore reads either store shape: the legacy single JSON array, or one
+// record per line. Shared by Load (a file) and priorIDs (a blob from git show),
+// which have to agree or a base-revision store in the new format reads as
+// empty and the gate silently never fires. path is only for the error message.
+func parseStore(b []byte, path string) ([]Record, error) {
 	// One JSON array is the legacy shape, kept readable so an existing store
 	// does not quietly come back empty.
 	s := string(b)
-	if t := strings.TrimLeft(s, " \t\r\n"); t != "" && t[0] == '[' {
+	if t := strings.TrimLeft(s, " 	\r\n"); t != "" && t[0] == '[' {
 		var rs []Record
 		if err := json.Unmarshal(b, &rs); err != nil {
 			return nil, err
@@ -247,7 +255,7 @@ func Match(root string, rs []Record, file string, line int) []Resolved {
 		// One read per Match call, not per record: every record here is on the
 		// same file, and PreToolUse blocks the edit that is waiting on us.
 		if len(r.Lines) > 0 && !read {
-			lines, read = fileLines(filepath.Join(root, file)), true
+			lines, read = fileLinesWithin(filepath.Join(root, file), root), true
 		}
 		a := resolveAnchor(lines, r)
 
@@ -287,13 +295,52 @@ func samePath(a, b string) bool {
 // A file outside root comes back unchanged rather than as a "../.." path: a
 // record can only concern a file in its own repo, so an outside path should
 // simply fail to match.
+//
+// Both sides are symlink-resolved before comparing. The comparison is lexical,
+// and macOS hands the tool a resolved path in one place (os.TempDir under a
+// test, /tmp anywhere) and an unresolved one in another, so a naive
+// filepath.Rel sees "/private/tmp/repo" against "/tmp/repo/x.go" and cannot
+// tell inside from outside — an escaping path then reads as contained. Resolve
+// both and the ".." check means what it says.
 func Rel(root, abs string) string {
 	if root == "" || !filepath.IsAbs(abs) {
 		return abs
 	}
+	if r, err := filepath.EvalSymlinks(root); err == nil {
+		root = r
+	}
+	if a, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = a
+	}
 	r, err := filepath.Rel(root, abs)
-	if err != nil || strings.HasPrefix(r, "..") {
+	if err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
 		return abs
 	}
 	return r
+}
+
+// outsideRoot reports whether path escapes root, the one question every read of
+// a store-supplied path has to answer. Both sides are symlink-resolved (macOS
+// hands the tool a resolved path in one place and an unresolved one in
+// another, and a lexical comparison across that boundary cannot tell inside
+// from outside), then the answer is simply whether filepath.Rel had to climb
+// out with "..". An empty root means the caller is not working against a repo
+// (capture reading a session file) — its own absolute path, nothing to guard.
+func outsideRoot(path, root string) bool {
+	if root == "" {
+		return false
+	}
+	r, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return true // a root we cannot resolve is not one we can vouch for
+	}
+	p, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		p = path // not-yet-created target: compare what we were given
+	}
+	rel, err := filepath.Rel(r, p)
+	if err != nil {
+		return true
+	}
+	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
