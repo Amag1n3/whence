@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>whence — og card 1200×630</title>
+
+<!-- Same face the site loads (see web/src/main.tsx). Requires this file to sit
+     at web/og-card.html so ./node_modules resolves. -->
+<link rel="stylesheet" href="./node_modules/@fontsource-variable/archivo/wdth.css">
+
+<style>
+  :root {
+    --basin: #100A06;
+    --silt:  #D7CFC4;
+    --ochre: #E3A35A;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { background: #000; }
+
+  /* The capture target. Exactly 1200×630 — screenshot this node. */
+  #card {
+    width: 1200px;
+    height: 630px;
+    background: var(--basin);
+    color: var(--silt);
+    font-family: 'Archivo Variable', ui-sans-serif, system-ui, sans-serif;
+    padding: 80px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  .lockup { display: flex; align-items: center; gap: 20px; }
+  .lockup span {
+    font-size: 40px;
+    font-weight: 600;
+    letter-spacing: -0.012em;
+  }
+
+  h1 {
+    font-size: 76px;
+    font-weight: 600;
+    line-height: 1.14;
+    letter-spacing: -0.014em;
+    max-width: 900px;
+    text-wrap: balance;
+  }
+  h1 em { font-style: normal; color: var(--ochre); }
+
+  .foot {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 15px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--silt);
+    opacity: 0.55;
+  }
+  .foot::before {
+    content: "";
+    width: 44px;
+    height: 3px;
+    background: var(--ochre);
+    flex: none;
+  }
+
+  /* Loud failure instead of a silent wrong-font export. */
+  #fontwarn {
+    display: none;
+    position: fixed;
+    inset: 0 0 auto 0;
+    z-index: 9;
+    background: #CC6449;
+    color: #100A06;
+    font: 600 15px/1.5 ui-sans-serif, system-ui, sans-serif;
+    padding: 14px 20px;
+  }
+  #fontwarn.show { display: block; }
+</style>
+</head>
+<body>
+
+<div id="fontwarn">
+  Archivo did not load — this card is rendering in a fallback face. Do not export it.
+  Put this file at <b>web/og-card.html</b> so <code>./node_modules/</code> resolves.
+</div>
+
+<div id="card">
+  <div class="lockup">
+    <svg width="56" height="56" viewBox="0 0 64 64" aria-hidden="true">
+      <rect width="64" height="64" rx="14" fill="#100A06"/>
+      <rect x="8"  y="10" width="38" height="5.5" rx="2.75" fill="#D7CFC4"/>
+      <rect x="19" y="23" width="32" height="5.5" rx="2.75" fill="#D7CFC4"/>
+      <rect x="30" y="36" width="26" height="5.5" rx="2.75" fill="#E3A35A"/>
+      <rect x="19" y="49" width="22" height="5.5" rx="2.75" fill="#D7CFC4"/>
+    </svg>
+    <span>whence</span>
+  </div>
+
+  <h1>Git remembers what changed. <em>whence</em> remembers why.</h1>
+
+  <div class="foot">whence.fyi · Go · MIT</div>
+</div>
+
+<script>
+  document.fonts.ready.then(function () {
+    if (!document.fonts.check('600 76px "Archivo Variable"')) {
+      document.getElementById('fontwarn').classList.add('show');
+    }
+  });
+</script>
+
+</body>
+</html>
