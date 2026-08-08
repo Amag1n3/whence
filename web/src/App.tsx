@@ -241,7 +241,7 @@ export default function App() {
             <Reveal>
               <h1 className="max-w-[17ch] text-[clamp(2.4rem,6vw,4.4rem)] leading-[1.04]">
                 Git remembers what changed.{' '}
-                <span className="font-mono text-[0.82em] font-medium text-ochre">why</span>{' '}
+                <span className="font-mono text-[0.82em] font-medium text-ochre">whence</span>{' '}
                 remembers the reason.
               </h1>
             </Reveal>
@@ -493,7 +493,7 @@ export default function App() {
                       <p className="max-w-[50ch] text-[19px] leading-[1.55] text-silt sm:text-[21px]">
                         Count the times an agent proposed a change that contradicted a
                         recorded decision and{' '}
-                        <span className="font-mono text-[0.86em] text-ochre">why</span> caught
+                        <span className="font-mono text-[0.86em] text-ochre">whence</span> caught
                         it.{' '}
                         <span className="text-cinnabar">
                           If that is zero after three months of real daily use, the idea is
