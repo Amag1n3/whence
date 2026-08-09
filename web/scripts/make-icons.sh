@@ -24,11 +24,18 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+: "${CHROME:=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 if [ ! -x "$CHROME" ]; then
-  echo "error: Google Chrome not found at:" >&2
-  echo "  $CHROME" >&2
-  echo "Install Chrome, or point CHROME at another Chromium build." >&2
+  for candidate in google-chrome chromium chromium-browser; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      CHROME="$(command -v "$candidate")"
+      break
+    fi
+  done
+fi
+if [ ! -x "$CHROME" ]; then
+  echo "error: no Chrome/Chromium found." >&2
+  echo "Set CHROME=/path/to/chrome and re-run." >&2
   exit 1
 fi
 
@@ -77,6 +84,9 @@ shoot "file://$TMP/apple.html" 180 180 "$PWD/public/apple-touch-icon.png"
 # is nothing to crop.
 shoot "file://$PWD/og-card.html" 1200 630 "$PWD/public/og-image.png"
 
+bash scripts/icons-lock.sh write
+
 echo
 echo "Done. Check public/og-image.png before pushing — it carries webfonts,"
 echo "and a font that failed to load renders as a fallback without erroring."
+echo "CI verifies the lock, which cannot see a wrong font. Only you can."

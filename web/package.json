@@ -7,7 +7,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "icons": "bash scripts/make-icons.sh"
+    "icons": "bash scripts/make-icons.sh",
+    "icons:check": "bash scripts/icons-lock.sh check",
+    "contrast": "python3 scripts/contrast.py"
   },
   "keywords": [],
   "author": "",
