@@ -32,7 +32,7 @@ const DOORS: {
     href: '/docs',
     label: 'Commands',
     blurb:
-      'All ten of them, with flags, exit codes and what each one prints. whence check is the CI gate.',
+      'Every command, with flags, exit codes and what each one prints. whence check is the CI gate.',
   },
   {
     href: '/why',
