@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react'
+
 import { Reveal } from '@/components/Reveal'
 import { DocPage, DocSection, type DocSectionMeta } from '@/components/DocPage'
 import { REPO } from '@/components/Chrome'
@@ -22,7 +24,46 @@ import { FAQ } from '@/content/faq'
 const COUNT = FAQ.reduce((n, c) => n + c.questions.length, 0)
 const SECTIONS: DocSectionMeta[] = FAQ.map((c) => ({ id: c.id, label: c.label }))
 
+/** One accordion item's identity, shared with the search index, which builds
+ *  its hrefs from the same shape. Change one and the other stops resolving. */
+const itemId = (clusterId: string, j: number) => `${clusterId}-${j}`
+
+const readHash = () =>
+  typeof window === 'undefined' ? '' : decodeURIComponent(window.location.hash.slice(1))
+
+const ownerOf = (target: string) =>
+  FAQ.find((c) => c.questions.some((_, j) => itemId(c.id, j) === target))
+
 export default function FaqPage() {
+  /* Which answers are open, per cluster. Controlled rather than defaultValue
+     because search has to be able to open one — and when the reader is
+     already on /faq, picking another result only changes the hash, so nothing
+     remounts and a defaultValue would never be re-read. */
+  const [open, setOpen] = useState<Record<string, string[]>>(() => {
+    const owner = ownerOf(readHash())
+    if (owner) return { [owner.id]: [readHash()] }
+    // No deep link: open the first question so the page shows what an answer
+    // looks like rather than a wall of closed headings.
+    return { [FAQ[0].id]: [itemId(FAQ[0].id, 0)] }
+  })
+
+  useEffect(() => {
+    const go = () => {
+      const target = readHash()
+      const owner = ownerOf(target)
+      if (!owner) return
+      setOpen((prev) => ({
+        ...prev,
+        [owner.id]: [...new Set([...(prev[owner.id] ?? []), target])],
+      }))
+      // The item carries scroll-mt-24, so this clears the fixed header.
+      document.getElementById(target)?.scrollIntoView()
+    }
+    go()
+    window.addEventListener('hashchange', go)
+    return () => window.removeEventListener('hashchange', go)
+  }, [])
+
   return (
     <DocPage
       current="faq"
@@ -35,15 +76,18 @@ export default function FaqPage() {
         <DocSection key={cluster.id} id={cluster.id} n={i + 1} title={cluster.label}>
           <Accordion
             type="multiple"
-            /* Reference material, so several answers stay open at once. The
-               first cluster opens on its first question — one row showing what
-               an answer looks like, rather than a wall of closed headings the
-               reader has to guess at. */
-            defaultValue={i === 0 ? [`${cluster.id}-0`] : undefined}
+            /* Reference material, so several answers stay open at once. */
+            value={open[cluster.id] ?? []}
+            onValueChange={(v) => setOpen((prev) => ({ ...prev, [cluster.id]: v }))}
             className="border-t border-white/[0.07]"
           >
             {cluster.questions.map((item, j) => (
-              <AccordionItem key={item.q} value={`${cluster.id}-${j}`}>
+              <AccordionItem
+                key={item.q}
+                value={itemId(cluster.id, j)}
+                id={itemId(cluster.id, j)}
+                className="scroll-mt-24"
+              >
                 <AccordionTrigger>{item.q}</AccordionTrigger>
                 <AccordionContent>{item.a}</AccordionContent>
               </AccordionItem>

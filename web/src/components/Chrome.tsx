@@ -1,6 +1,7 @@
 import { ArrowUpRight } from 'lucide-react'
 import type { MouseEvent } from 'react'
 
+import { SearchDialog } from '@/components/SearchDialog'
 import { cn } from '@/lib/utils'
 
 export const REPO = 'https://github.com/Amag1n3/whence'
@@ -60,7 +61,10 @@ export function Header({
             gap-x-5 with a wrap allowance: four items plus the logo overflow a
             360px viewport at gap-6, and a nav that clips is worse than one that
             takes two rows. */}
-        <nav className="ml-auto flex flex-wrap items-center justify-end gap-x-5 gap-y-1 font-mono text-[12.5px] text-muted-foreground">
+        <div className="ml-auto">
+          <SearchDialog />
+        </div>
+        <nav className="flex flex-wrap items-center justify-end gap-x-5 gap-y-1 font-mono text-[12.5px] text-muted-foreground">
           {NAV.map((item) => (
             <a
               key={item.key}

@@ -81,10 +81,15 @@ export default function ContactPage() {
                 <Reveal key={c.label} delay={i * 0.06}>
                   <a
                     href={c.href}
-                    className="group grid gap-x-14 gap-y-3 border-b border-white/[0.09] py-7 transition-colors hover:bg-white/[0.02] lg:grid-cols-[12rem_minmax(0,1fr)]"
+                    className="group -mx-4 grid gap-x-14 gap-y-3 border-b border-white/[0.09] px-4 py-7 transition-colors hover:bg-white/[0.035] lg:grid-cols-[12rem_minmax(0,1fr)]"
                   >
                     <div className="flex items-center gap-1.5">
-                      <span className="font-display text-[18px] font-semibold transition-colors group-hover:text-ochre">
+                      {/* The hover used to be group-hover:text-ochre. Once the
+                          palette went monochrome, ochre and silt became the
+                          same white and this row's hover state was white on
+                          white — invisible. Hover is a background lift now,
+                          which does not depend on there being a second hue. */}
+                      <span className="font-display text-[18px] font-semibold">
                         {c.label}
                       </span>
                       {c.external && (
