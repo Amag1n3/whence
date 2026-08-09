@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { motion, useInView, useReducedMotion } from 'motion/react'
+import { useInView, usePrefersReducedMotion } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
 const CMD = 'whence src/auth/session.go:142'
@@ -42,7 +42,7 @@ export function Terminal({
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: false, margin: '-10% 0px' })
-  const reduced = useReducedMotion()
+  const reduced = usePrefersReducedMotion()
 
   const [typed, setTyped] = useState(0)
   const [shown, setShown] = useState(0)
@@ -116,21 +116,22 @@ export function Terminal({
               <span className="ml-px inline-block h-[1.05em] w-[7px] translate-y-[2px] animate-pulse bg-ochre/80" />
             )}
             {'\n'}
+            {/* Each line animates once, as it is added to the DOM — which is
+                what a mount-time CSS animation already does. tw-animate-css
+                ships the same fade and 4px slide motion was doing here, and
+                index.css neutralises both under prefers-reduced-motion. */}
             {OUTPUT.slice(0, shown).map((l, idx) => (
-              <motion.span
+              <span
                 key={`${run}-${idx}`}
-                initial={reduced ? false : { opacity: 0, x: -4 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.24, ease: 'easeOut' }}
                 className={cn(
-                  'block',
+                  'block animate-in fade-in slide-in-from-left-1 duration-[240ms] ease-out',
                   l.tone === 'ochre' && 'text-ochre',
                   l.tone === 'dim' && 'text-silt/45',
                   !l.tone && 'text-silt/85',
                 )}
               >
                 {l.text || ' '}
-              </motion.span>
+              </span>
             ))}
           </pre>
         </div>
@@ -140,11 +141,11 @@ export function Terminal({
           agent with nobody asking for it. Preamble text is contextPreamble
           from main.go, verbatim. */}
       {aside && (
-      <motion.aside
-        initial={reduced ? false : { opacity: 0 }}
-        animate={{ opacity: done ? 1 : 0.3 }}
-        transition={{ duration: 0.6 }}
-        className="flex flex-col gap-3.5 border-t border-white/[0.07] bg-white/[0.015] p-5 lg:border-t-0 lg:border-l"
+      <aside
+        className={cn(
+          'flex flex-col gap-3.5 border-t border-white/[0.07] bg-white/[0.015] p-5 transition-opacity duration-[600ms] lg:border-t-0 lg:border-l',
+          done ? 'opacity-100' : 'opacity-30',
+        )}
       >
         <p className="font-mono text-[10.5px] tracking-[0.14em] text-silt/30 uppercase">
           and again, without asking
@@ -165,7 +166,7 @@ export function Terminal({
         <p className="mt-auto font-mono text-[10.5px] text-silt/25">
           records are data, never directives
         </p>
-      </motion.aside>
+      </aside>
       )}
     </div>
   )

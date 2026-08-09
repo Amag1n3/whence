@@ -1,8 +1,20 @@
-import { motion, useReducedMotion } from 'motion/react'
+import { useRef } from 'react'
 import type { ReactNode } from 'react'
 
+import { useInView } from '@/lib/motion'
+import { cn } from '@/lib/utils'
+
 /** Scroll-in reveal. Once only — a page that re-animates on every scroll-by
- *  is a page that fights the reader. */
+ *  is a page that fights the reader.
+ *
+ *  This was motion/react. It is on every page, and a 620ms fade-and-rise does
+ *  not need a 124kB animation runtime: IntersectionObserver and a CSS
+ *  transition do exactly the same thing. Same distance, same duration, same
+ *  curve — `ease-settle` is the token holding the array that was inline here.
+ *
+ *  Reduced motion is handled globally: index.css clamps every transition to
+ *  0.001ms under prefers-reduced-motion, so the element still lands visible,
+ *  just instantly. */
 export function Reveal({
   children,
   delay = 0,
@@ -12,18 +24,24 @@ export function Reveal({
   delay?: number
   className?: string
 }) {
-  const reduced = useReducedMotion()
-  if (reduced) return <div className={className}>{children}</div>
+  const ref = useRef<HTMLDivElement>(null)
+  // Margin matches motion's old viewport setting: fire before the top edge.
+  const shown = useInView(ref, { once: true, margin: '-80px' })
 
   return (
-    <motion.div
-      className={className}
-      initial={{ opacity: 0, y: 18 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: '-80px' }}
-      transition={{ duration: 0.62, delay, ease: [0.16, 0.8, 0.28, 1] }}
+    <div
+      ref={ref}
+      style={delay ? { transitionDelay: `${delay}s` } : undefined}
+      className={cn(
+        /* `translate`, not `transform`: Tailwind v4 compiles translate-y-* to
+           the standalone translate property, so a transition declared on
+           transform animates the fade and jumps the rise. */
+        'transition-[opacity,translate] duration-[620ms] ease-settle',
+        shown ? 'translate-y-0 opacity-100' : 'translate-y-[18px] opacity-0',
+        className,
+      )}
     >
       {children}
-    </motion.div>
+    </div>
   )
 }

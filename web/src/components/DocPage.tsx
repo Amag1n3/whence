@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { MouseEvent, ReactNode } from 'react'
-import { motion, useReducedMotion } from 'motion/react'
 import { Plus } from 'lucide-react'
 
 import { Reveal } from '@/components/Reveal'
 import { Header, Footer, SHELL, type PageKey } from '@/components/Chrome'
-import { Toaster } from '@/components/ui/sonner'
+const Toaster = lazy(() =>
+  import('@/components/ui/sonner').then((m) => ({ default: m.Toaster })),
+)
 import { cn } from '@/lib/utils'
 
 /* The shell every reference page shares: hero, a sticky index, numbered
@@ -95,7 +96,16 @@ export function DocPage({
   children: ReactNode
 }) {
   const active = useActiveSection(sections)
-  const reduced = useReducedMotion()
+
+  /* Where the index marker sits. Measured rather than computed, because the
+     rows are not a fixed height — a long section label wraps to two lines. */
+  const listRef = useRef<HTMLUListElement>(null)
+  const [marker, setMarker] = useState({ top: 0, height: 0 })
+
+  useLayoutEffect(() => {
+    const el = listRef.current?.querySelector<HTMLElement>('li[data-active]')
+    if (el) setMarker({ top: el.offsetTop, height: el.offsetHeight })
+  }, [active, sections])
 
   return (
     <div className="grain relative min-h-screen">
@@ -132,29 +142,26 @@ export function DocPage({
                     how far down the document you are without reading a
                     single label. Square ends, no dot — the marker is a
                     measurement tick, same as every other number here. */}
-                <ul className="mt-4 space-y-0.5 border-l border-white/10">
+                {/* One marker for the whole list, not a border that flips on
+                    each item — a border-colour transition cross-fades in
+                    place, so the bar blinks out at the old row and in at the
+                    new one, which is what read as choppy.
+                    It was a motion layoutId; measuring the active row and
+                    translating a single span does the same job in ten lines
+                    and without the animation runtime. */}
+                <ul ref={listRef} className="relative mt-4 space-y-0.5 border-l border-white/10">
+                  <span
+                    aria-hidden
+                    className="absolute -left-px w-0.5 bg-ochre transition-[transform,height] duration-300 ease-settle"
+                    style={{
+                      transform: `translateY(${marker.top}px)`,
+                      height: marker.height || undefined,
+                    }}
+                  />
                   {sections.map((s) => {
                     const isActive = active === s.id
                     return (
-                      <li key={s.id} className="relative">
-                        {/* One marker for the whole list, not a border that
-                            flips on each item. A border-colour transition
-                            cross-fades in place — the bar blinks out at the
-                            old row and blinks in at the new one, which is
-                            what read as choppy. Sharing a layoutId makes
-                            motion treat it as the same element moving, so it
-                            travels the distance instead. */}
-                        {isActive && (
-                          <motion.span
-                            layoutId="doc-index-marker"
-                            className="absolute inset-y-0 -left-px w-0.5 bg-ochre"
-                            transition={
-                              reduced
-                                ? { duration: 0 }
-                                : { type: 'spring', stiffness: 420, damping: 34, mass: 0.6 }
-                            }
-                          />
-                        )}
+                      <li key={s.id} data-active={isActive || undefined}>
                         <a
                           href={`#${s.id}`}
                           onClick={jump(s.id)}
@@ -184,8 +191,12 @@ export function DocPage({
 
       {/* Mounted here rather than per page: every page that renders a
           copyable <Code> block goes through DocPage, and the landing and
-          contact pages have none. One Toaster, no duplicates. */}
-      <Toaster position="top-right" />
+          contact pages have none. One Toaster, no duplicates.
+          Lazy, so sonner loads as its own chunk instead of sitting in the
+          parse path of a page that may never raise a toast. */}
+      <Suspense fallback={null}>
+        <Toaster position="top-right" />
+      </Suspense>
     </div>
   )
 }
