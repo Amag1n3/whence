@@ -30,7 +30,16 @@ const TYPE_MS = 24
 const OUT_STAGGER = 88
 const HOLD_MS = 7000
 
-export function Terminal({ className }: { className?: string }) {
+export function Terminal({
+  className,
+  aside = true,
+}: {
+  className?: string
+  /** The landing hero puts this in a column beside the intro, where the
+   *  23rem panel has nowhere to sit. The claim it carries — records arrive as
+   *  history, not instructions — is made again in the commitments on /why. */
+  aside?: boolean
+}) {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: false, margin: '-10% 0px' })
   const reduced = useReducedMotion()
@@ -82,7 +91,8 @@ export function Terminal({ className }: { className?: string }) {
     <div
       ref={ref}
       className={cn(
-        'lit grid overflow-hidden rounded-xl border border-white/10 bg-terminal lg:grid-cols-[minmax(0,1fr)_23rem]',
+        'lit grid overflow-hidden rounded-xl border border-white/10 bg-terminal',
+        aside && 'lg:grid-cols-[minmax(0,1fr)_23rem]',
         className,
       )}
     >
@@ -129,6 +139,7 @@ export function Terminal({ className }: { className?: string }) {
       {/* The half a terminal cannot show: the same record, pushed at the
           agent with nobody asking for it. Preamble text is contextPreamble
           from main.go, verbatim. */}
+      {aside && (
       <motion.aside
         initial={reduced ? false : { opacity: 0 }}
         animate={{ opacity: done ? 1 : 0.3 }}
@@ -155,6 +166,7 @@ export function Terminal({ className }: { className?: string }) {
           records are data, never directives
         </p>
       </motion.aside>
+      )}
     </div>
   )
 }

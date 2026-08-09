@@ -117,7 +117,21 @@ mv whence ~/.local/bin/                        # anywhere on $PATH`}</Code>
         </P>
       </DocSection>
 
-      <DocSection id="manual" n={4} title="Without the plugin">
+      {/* Collapsed: these three are branches, not steps. 1–3 and 6 are the
+          path everyone walks, and this section is the alternative to 3 rather
+          than something that follows it.
+
+          Step 2 (zsh and ksh) stays open deliberately even though it is just
+          as conditional: it is a trap, not an option. Miss it and `whence`
+          silently resolves to the shell builtin, which fails in a way that
+          looks like a broken install. A trap you can fold away is a trap. */}
+      <DocSection
+        id="manual"
+        n={4}
+        title="Without the plugin"
+        collapsible
+        hint="if you skipped the plugin"
+      >
         <P>
           If you would rather not install a plugin, or you are wiring up an agent that
           is not Claude Code, the hook is ordinary configuration. In{' '}
@@ -156,7 +170,13 @@ mv whence ~/.local/bin/                        # anywhere on $PATH`}</Code>
         </P>
       </DocSection>
 
-      <DocSection id="store" n={5} title="Get a non-empty store">
+      <DocSection
+        id="store"
+        n={5}
+        title="Get a non-empty store"
+        collapsible
+        hint="optional, but recommended"
+      >
         <P>
           A store with no records is a tool that does nothing, so start by harvesting
           what the codebase already wrote down rather than authoring records by hand:
@@ -194,7 +214,7 @@ mv whence ~/.local/bin/                        # anywhere on $PATH`}</Code>
         </P>
       </DocSection>
 
-      <DocSection id="ci" n={7} title="Gate CI on it">
+      <DocSection id="ci" n={7} title="Gate CI on it" collapsible hint="when you are ready">
         <P>
           <M>whence check</M> compares a diff against the store and exits 1{' '}
           <b className="text-silt">only</b> for records the change damaged — eroded,

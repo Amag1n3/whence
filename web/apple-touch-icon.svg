@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="180" height="180">
   <title>whence</title>
-  <rect width="64" height="64" fill="#100A06"/>
-  <rect x="8"  y="10" width="38" height="5.5" rx="2.75" fill="#D7CFC4"/>
-  <rect x="19" y="23" width="32" height="5.5" rx="2.75" fill="#D7CFC4"/>
-  <rect x="30" y="36" width="26" height="5.5" rx="2.75" fill="#E3A35A"/>
-  <rect x="19" y="49" width="22" height="5.5" rx="2.75" fill="#D7CFC4"/>
+  <rect width="64" height="64" fill="#0A0A0A"/>
+  <rect x="8"  y="10" width="38" height="5.5" fill="#FAFAFA"/>
+  <rect x="19" y="23" width="32" height="5.5" fill="#FAFAFA"/>
+  <rect x="30" y="36" width="26" height="5.5" fill="#FAFAFA"/>
+  <rect x="19" y="49" width="22" height="5.5" fill="#FAFAFA"/>
 </svg>

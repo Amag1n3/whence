@@ -2,15 +2,21 @@
 name: whence
 description: Git remembers what changed. whence remembers why.
 colors:
-  basin: "oklch(0.152 0.014 62)"
-  sediment: "oklch(0.204 0.016 62)"
-  terminal: "oklch(0.118 0.012 62)"
-  silt: "oklch(0.858 0.018 78)"
-  ochre: "oklch(0.762 0.118 68)"
-  verdigris: "oklch(0.688 0.052 154)"
-  cinnabar: "oklch(0.622 0.138 36)"
-  dim: "oklch(0.598 0.018 70)"
-  border: "oklch(1 0 0 / 8%)"
+  basin: "oklch(0.145 0 0)"
+  sediment: "oklch(0.205 0 0)"
+  terminal: "oklch(0.115 0 0)"
+  silt: "oklch(0.985 0 0)"
+  ochre: "oklch(0.985 0 0)"
+  ochre-selection: "oklch(0.985 0 0 / 22%)"
+  ochre-ring: "oklch(0.985 0 0 / 70%)"
+  verdigris: "oklch(0.985 0 0)"
+  cinnabar: "oklch(0.985 0 0)"
+  dim: "oklch(0.708 0 0)"
+  primary: "oklch(0.922 0 0)"
+  primary-foreground: "oklch(0.205 0 0)"
+  secondary: "oklch(0.269 0 0)"
+  border: "oklch(1 0 0 / 10%)"
+  input: "oklch(1 0 0 / 15%)"
 typography:
   display-xl:
     fontFamily: "Archivo Variable, ui-sans-serif, system-ui, sans-serif"
@@ -97,11 +103,11 @@ typography:
     lineHeight: 1.4
     letterSpacing: "0.02em"
 rounded:
-  xs: "2px"
-  sm: "6px"
-  md: "8px"
-  lg: "10px"
-  xl: "14px"
+  none: "0px"
+  sm: "0px"
+  md: "0px"
+  lg: "0px"
+  xl: "0px"
   full: "999px"
 spacing:
   xs: "6px"
@@ -111,18 +117,25 @@ spacing:
   xl: "96px"
 components:
   button-primary:
-    backgroundColor: "{colors.ochre}"
-    textColor: "oklch(0.178 0.030 68)"
-    rounded: "{rounded.md}"
-    padding: "10px 20px"
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.primary-foreground}"
+    typography: "{typography.ui}"
+    rounded: "{rounded.none}"
+    padding: "10px 24px"
   layer-eyebrow:
     textColor: "{colors.dim}"
     typography: "{typography.eyebrow}"
   terminal-surface:
     backgroundColor: "{colors.terminal}"
     textColor: "{colors.silt}"
-    rounded: "{rounded.xl}"
+    rounded: "{rounded.none}"
     padding: "20px"
+  contents-index-item-active:
+    borderLeft: "2px solid {colors.ochre}"
+    textColor: "{colors.silt}"
+  contents-index-item:
+    borderLeft: "2px solid transparent"
+    textColor: "{colors.dim}"
 ---
 
 # whence — design system
@@ -152,17 +165,89 @@ is right and this file is stale.
 
 ## Overview
 
-The page is **a core sample**. Depth is time: you scroll down through strata,
-each layer numbered like a core log, and the further down you go the more the
-argument has settled. That conceit is not decoration — it is the same claim the
-product makes, that the reason a thing is the way it is lies underneath it and
-has to be dug up.
+The landing page is **an introduction and a set of doors**, and nothing else:
+the pitch, the terminal demo beside it, then cards to `/install`, `/docs`,
+`/why`, `/faq` and the repo.
 
-Everything sits in the **30–80° hue band** — iron, clay, bone. The page should
-read as mineral rather than as a screen. The single most load-bearing
-consequence: **body text is `silt`, never white.** White-on-near-black is the
-default this design deliberately leaves behind, and reaching for `#fff` undoes
-the whole palette.
+It used to be **a core sample** — eleven numbered strata scrolled top to bottom
+with a depth-gauge rail down the left edge, the conceit being that the reason a
+thing is the way it is lies underneath it and has to be dug up. That was a good
+idea about the *product* and a bad idea about the *page*: it buried the install
+command at depth 07, so every reader had to sit through the whole argument to
+reach the thing they came for. The argument moved to `/why` on 2026-08-09 and
+the rail was deleted with it.
+
+Numbered sections survive on `/why` and the reference pages, where a reader has
+already agreed to read in order. They are a table of contents now, not a depth
+gauge.
+
+**Every surface and text token is chroma 0.** Repainted 2026-08-09 onto the
+shadcn `neutral` dark scale — which `components.json` had named as this
+project's `baseColor` from the first commit, while `index.css` overrode all of
+it with a 30–80° mineral band.
+
+That band is what the repaint removed, and it is worth being precise about why,
+because the old rationale was not stupid. Tinting the *surfaces* warm was
+defensible. Tinting the surfaces **and** the body text warm at the same time was
+not: two warm layers with nothing neutral between them left no reference point,
+so the eye read the result as a sepia wash rather than as a deliberate hue. The
+former rule "body text is `silt`, never white" was the load-bearing half of that
+mistake — `silt` is now `oklch(0.985 0 0)`, near-white, and the page got *more*
+legible for it, not less (12.74 → 18.96 against the page).
+
+**As of 2026-08-09 there is no colour at all.** The single amber accent that
+survived the first repaint went too. Every token is chroma 0.
+
+`ochre`, `verdigris` and `cinnabar` still exist as names — 114 call sites use
+them, and the names still say what the thing *means*, which is the part worth
+keeping. None of them is a colour any more; all three resolve to the same
+near-white. **Do not read them as hues.**
+
+That means state cannot be carried by colour, so it is carried three ways that
+were always already present:
+
+1. **An opacity ladder.** Severity is brightness: intact `silt/55`, eroded
+   `silt/80`, orphaned or failing full-strength `silt`. A finding gets brighter
+   the worse it is. Used in `Gate` and `DriftDemo`.
+2. **The icon and the label.** `✓` / `✗`, `works` / `not built`, the integrity
+   percentage. These were doing the real work all along; the colour was
+   reinforcement.
+3. **Inversion, once.** The `exit 1` badge flips to a light fill with dark
+   text. It is the loudest move available without hue, so it is spent on the
+   single element that has earned it — the exit code, which the page calls the
+   product. Nothing else on the site may invert.
+
+The risk this accepts: scanning is slower. You can no longer find the failing
+row by looking for red. That is the cost of the direction, taken deliberately —
+not an oversight to be patched later by sneaking one hue back in for "just this
+one status".
+
+Depth is carried by **luminance, not hue**: cards sit above the page
+(`0.205` on `0.145`), terminals sit below it (`0.115`). That reads as physical
+without a single border, and it is the one part of the core-sample conceit that
+survived the repaint intact.
+
+## Corners: square, and why that is not just a trend
+
+**Every radius in the ramp is `0`.** Set 2026-08-09.
+
+Zero-radius hairline layouts are currently one of the three looks that
+generated design falls into by default, so it is worth being explicit that this
+one is argued rather than borrowed: everything this tool is *about* is
+rectangular. A terminal, a diff, a line range, an exit code, a content hash.
+The page had rounded cards describing square things. Squaring the corners costs
+nothing and makes the chrome agree with its own subject.
+
+`rounded-full` survives in exactly two situations, and adding a third needs a
+reason written next to it:
+
+1. **A thing that is genuinely a circle** — status dots, the logo mark.
+2. **A capsule that encodes a continuous quantity** — the decay meter in
+   `DriftDemo`, where the shape is doing the same job as a progress bar.
+
+Pill-shaped *labels* were squared. A label on this site is a stamp — `works`,
+`not built`, `exit 1` — and a stamp has corners. A pill reads as a chip you can
+dismiss, which is the wrong affordance for a status that is not yours to change.
 
 Surface mode is **Persuade**: a visitor decides whether this tool is real and
 whether its author is honest. The tone that earns that is not enthusiasm — it is
@@ -175,8 +260,9 @@ a project willing to print the number that would kill it.
 | `basin` | the page, deepest layer | Page background. Never a card. |
 | `sediment` | raised surfaces | Cards, wells, inset panels. |
 | `terminal` | the cut face of the core | Code and terminal blocks only. |
-| `silt` | body text | The default foreground. Not white. |
-| `ochre` | identity, primary | Accents, markers, links, the logo dot, focus rings. |
+| `silt` | body text | The default foreground. Near-white, chroma 0. |
+| `ochre` | identity, status | Accents, markers, links, the logo dot, focus rings. Never a button fill. |
+| `primary` | button fills | Near-white with dark text. The registry default. |
 | `verdigris` | **"this works" and nothing else** | Never identity, never decoration. |
 | `cinnabar` | violation, orphaned, lost | Never decoration. |
 | `dim` | secondary text | Eyebrows, metadata, footers. |
@@ -193,28 +279,62 @@ round-tripping through sRGB loses it.
 
 ### Contrast — measured, not assumed
 
-`PRODUCT.md` commits to **WCAG 2.2 AA**, so these are obligations. Measured
-2026-08-03 against all three background tokens:
+`PRODUCT.md` commits to **WCAG 2.2 AA**, so these are obligations. Re-measured
+2026-08-09 after the repaint, against all three background tokens:
 
 | Foreground | on `basin` | on `sediment` | on `terminal` |
 |---|---|---|---|
-| `silt` | 12.74 | 11.66 | 13.19 |
-| `ochre` | 9.02 | 8.26 | 9.34 |
-| `verdigris` | 7.19 | 6.59 | 7.45 |
-| `muted-foreground` | 6.01 | 5.51 | 6.23 |
-| `cinnabar` | 5.13 | 4.69 | 5.31 |
-| `dim` | 4.92 | **4.51** | 5.10 |
+| `silt` / `ochre` / `verdigris` / `cinnabar` | 18.96 | 17.16 | 19.52 |
+| `primary` | 15.72 | 14.22 | 16.18 |
+| `dim` / `muted-foreground` | 7.63 | **6.91** | 7.86 |
 
-**`dim` was the only failure and it failed everywhere.** At `L 0.562` it measured
-4.24 / 3.89 / 4.40 — under the 4.5 required for normal text, and every one of its
-uses (eyebrows at 11px, depth markers, the footer at 12.5px) is normal text, so
-the 3.0 large-text allowance never applied. Raised to `L 0.598`, the minimum that
-clears 4.5 against `sediment`, the worst case. **Do not lower it back**; it now
-sits with almost no margin, so any new background lighter than `sediment` needs
-re-measuring rather than assuming.
+Plus `primary-foreground` on `primary` — the white button's own label — at 14.22.
 
-Everything else has real headroom. The mineral palette's avoidance of pure white
-costs nothing here — `silt` at 12.74 is far above the bar.
+The table collapsed when the palette went monochrome: the four foreground
+tokens are now the same value, so they measure the same. The floor moved *up*
+as a result — the worst pair in the system used to be `cinnabar` on `sediment`
+at 6.19, and is now `dim` on `sediment` at 6.91.
+
+The opacity ladder is the thing to watch instead, because a rung is a
+composite and not a token — nothing in the palette table describes it.
+Measured, compositing in gamma-encoded sRGB the way a browser does:
+
+| Rung | on `basin` | on `sediment` | on `terminal` |
+|---|---|---|---|
+| `silt` (full) | 18.96 | 17.16 | 19.52 |
+| `silt/80` | 12.07 | 11.22 | 12.30 |
+| `silt/55` | 6.04 | **5.90** | 6.04 |
+
+`silt/55` on `sediment` is the floor of the whole system at 5.90. It clears AA
+with room, but **a quieter fourth rung needs re-measuring before it ships** —
+the ladder is the one place where adding a step silently costs contrast, since
+it looks like a styling choice rather than a colour change.
+
+**The repaint fixed the one thing that was failing.** `dim` used to be the
+palette's sole AA violation and it failed everywhere it was used; it survived at
+`L 0.598` with a margin of 0.01 against `sediment`, which meant any new surface
+lighter than `sediment` would have silently broken it. Dropping the hue and
+moving to the neutral scale's `0.708` took it to 6.91 — the constraint is now
+comfortable rather than knife-edge. **Do not lower it back.**
+
+The worst pair in the system is now `cinnabar` on `sediment` at 6.19, against a
+floor of 4.5. Everything has real headroom, and the near-white foreground is a
+large part of why.
+
+The measurement is reproducible, not asserted. `scripts/contrast.py` does the
+oklch→sRGB→luminance conversion and **asserts** the 4.5 floor for every token
+pairing and every ladder rung, so a palette edit that breaks AA exits non-zero
+instead of reaching review:
+
+```
+python3 scripts/contrast.py
+```
+
+Its values mirror `src/index.css` by hand — there is no import between them, so
+moving a token means moving it in both places. That is the one seam in this
+check, and it is why the script lists `ochre`, `verdigris` and `cinnabar`
+separately even though all three are the same white today: if one of them is
+given a hue again, it shows up as its own row rather than hiding behind `silt`.
 
 ## Typography
 

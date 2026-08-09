@@ -1,0 +1,5 @@
+# sha256 of the sources public/*.png and og-image.png were rendered from.
+# Regenerate with: pnpm icons
+fc7affb47278e337c74e66ab6f258c19f4af38a5fab372845e81ce2bc498c207  public/favicon.svg
+4b153ab5111fdaf2910b000bac996c1eacd5cf88cbf6f97667af052359c447a6  apple-touch-icon.svg
+c47fefbda1ff9e4f743c61131b86e38bc9d2f9b581332bc978ab50858bc6b480  og-card.html

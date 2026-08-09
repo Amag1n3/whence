@@ -18,6 +18,33 @@ jobs:
       - run: go vet ./...
       - run: go test ./...
 
+  site:
+    # Two things the site can get wrong silently, both of which it already had.
+    #
+    # The rasters in web/public are generated from SVGs and og-card.html, and
+    # nothing rebuilt them when the palette changed — they sat two repaints
+    # behind their own sources while every vector was correct. This compares
+    # source hashes against web/public/icons.lock rather than re-rendering and
+    # diffing the images: CI is Linux, the icons are generated on macOS, and
+    # the two rasterise text differently enough that a pixel diff would be red
+    # on every pull request. A gate that fires when nothing is wrong gets
+    # switched off, which is the argument this repo makes for its own gate.
+    #
+    # The contrast script asserts the WCAG AA floor for every palette token
+    # and every rung of the opacity ladder. PRODUCT.md commits to AA, and the
+    # palette went from mineral to neutral to monochrome in one day — the kind
+    # of run where a contrast regression is easy to ship.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+      - run: bash scripts/icons-lock.sh check
+        name: rasters are in sync with their sources
+      - run: python3 scripts/contrast.py
+        name: palette clears WCAG AA
+
   check:
     # The gate on itself. whence's own decisions live in .whence/records.jsonl, so
     # this repo is the first place the CI story has to hold up — and it has to

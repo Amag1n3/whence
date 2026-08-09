@@ -4,6 +4,7 @@ import type { MouseEvent } from 'react'
 import { cn } from '@/lib/utils'
 
 export const REPO = 'https://github.com/Amag1n3/whence'
+export const EMAIL = 'amogh@whence.fyi'
 export const SHELL = 'mx-auto w-full max-w-[1280px] px-6 sm:px-10'
 
 /* Header and footer live here rather than in App because there are four pages
@@ -14,12 +15,17 @@ export const SHELL = 'mx-auto w-full max-w-[1280px] px-6 sm:px-10'
 /** One list, rendered by both header and footer, so a page added to one cannot
  *  go missing from the other. That drift is exactly why this file exists. */
 const NAV: { href: string; label: string; key: PageKey }[] = [
+  { href: '/why', label: 'why', key: 'why' },
   { href: '/install', label: 'install', key: 'install' },
   { href: '/docs', label: 'docs', key: 'docs' },
   { href: '/faq', label: 'questions', key: 'faq' },
 ]
 
-export type PageKey = 'install' | 'docs' | 'faq'
+/* 'contact' is a PageKey but deliberately not a NAV entry. The header is at
+   five items plus the logo already and wraps to two rows on a narrow phone;
+   contact is a destination people look for in a footer, not something to
+   spend header width on. It is rendered explicitly by Footer below. */
+export type PageKey = 'why' | 'install' | 'docs' | 'faq' | 'contact'
 
 export function Header({
   onLogo,
@@ -108,10 +114,10 @@ export function Footer() {
           github
         </a>
         <a
-          href="mailto:amogh@whence.fyi"
+          href="/contact"
           className="inline-flex min-h-6 items-center transition-colors hover:text-silt"
         >
-          amogh@whence.fyi
+          contact
         </a>
         <span className="sm:ml-auto">started 2026-07-31</span>
       </div>

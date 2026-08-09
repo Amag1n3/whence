@@ -1,20 +1,17 @@
+import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { ChevronRight, Search, X } from 'lucide-react'
 
 import { Code } from '@/components/Code'
 import { DocPage, DocSection, P, type DocSectionMeta } from '@/components/DocPage'
 import { REPO } from '@/components/Chrome'
-import { COMMANDS } from '@/content/commands'
+import { COMMANDS, type Command } from '@/content/commands'
 
 /* Reference. The landing page argues, /install gets you running, this answers
    "what does that flag do" — a different visit from either. Ten commands were
    shipped and four were documented anywhere a reader could find them. */
 
-const SECTIONS: DocSectionMeta[] = [
-  ...COMMANDS.map((g) => ({ id: g.id, label: g.label })),
-  { id: 'record', label: 'What a record is' },
-  { id: 'anchoring', label: 'Anchoring' },
-  { id: 'store', label: 'The store' },
-]
+const TOTAL = COMMANDS.reduce((n, g) => n + g.commands.length, 0)
 
 const A = ({ href, children }: { href: string; children: ReactNode }) => (
   <a
@@ -30,7 +27,13 @@ const M = ({ children }: { children: ReactNode }) => (
 )
 
 /** One command: signature, what it does, why, and an example if it earns one.
- *  The signature is the heading, because that is what a reader scans for. */
+ *
+ *  Collapsed is NOT hidden. The signature and the one-line description stay
+ *  visible at all times — those are what a reader scans for, and folding them
+ *  away would trade a long page for a page you cannot skim, which is worse.
+ *  Only the rationale and the worked example fold, and a command with neither
+ *  is not a disclosure at all: it renders as a plain row, because a control
+ *  that opens onto nothing is a small lie about there being more to read. */
 function Entry({
   sig,
   what,
@@ -42,31 +45,90 @@ function Entry({
   note?: ReactNode
   example?: string
 }) {
-  return (
-    <div className="border-t border-white/[0.07] pt-6">
+  const head = (
+    <>
       <h3 className="font-mono text-[13.5px] leading-[1.6] font-medium break-words text-silt">
         {sig}
       </h3>
-      <p className="mt-2.5 max-w-[56ch] text-[14.5px] leading-[1.68] text-silt/90">{what}</p>
-      {note && (
-        <p className="mt-2.5 max-w-[56ch] text-[14.5px] leading-[1.68] text-muted-foreground">
-          {note}
-        </p>
-      )}
-      {example && (
-        <div className="mt-4">
-          <Code>{example}</Code>
-        </div>
-      )}
-    </div>
+      <p className="mt-1.5 max-w-[56ch] text-[14.5px] leading-[1.68] text-muted-foreground">
+        {what}
+      </p>
+    </>
+  )
+
+  if (!note && !example) {
+    return <div className="border-t border-white/[0.09] py-4 pl-7">{head}</div>
+  }
+
+  return (
+    <details className="group border-t border-white/[0.09]">
+      <summary className="flex cursor-pointer list-none items-start gap-3 py-4 [&::-webkit-details-marker]:hidden">
+        <ChevronRight className="mt-1 size-4 shrink-0 text-dim transition-transform duration-200 group-open:rotate-90" />
+        <span className="min-w-0">{head}</span>
+      </summary>
+      <div className="pb-6 pl-7">
+        {note && (
+          <p className="max-w-[56ch] text-[14.5px] leading-[1.68] text-muted-foreground">
+            {note}
+          </p>
+        )}
+        {example && (
+          <div className="mt-4">
+            <Code>{example}</Code>
+          </div>
+        )}
+      </div>
+    </details>
   )
 }
 
+/* Matches on the signature, the one-line description and the example — the
+   three fields that are plain strings. `note` is a ReactNode and cannot be
+   searched without rendering it to text, so it is deliberately not covered:
+   a search that silently misses a third of the prose would be worse than one
+   whose scope is stated. The empty state says so out loud. */
+const matches = (c: Command, q: string) =>
+  c.sig.toLowerCase().includes(q) ||
+  c.what.toLowerCase().includes(q) ||
+  (c.example?.toLowerCase().includes(q) ?? false)
+
 export default function DocsPage() {
+  const [query, setQuery] = useState('')
+  const q = query.trim().toLowerCase()
+
+  const groups = useMemo(
+    () =>
+      q
+        ? COMMANDS.map((g) => ({ ...g, commands: g.commands.filter((c) => matches(c, q)) }))
+            .filter((g) => g.commands.length > 0)
+        : COMMANDS,
+    [q],
+  )
+
+  /* The index tracks the filter, so it never offers a jump to a section the
+     search has emptied. Memoised because DocPage subscribes a scroll listener
+     keyed on this array's identity — a fresh array every keystroke would tear
+     the listener down and rebuild it on every keystroke. */
+  const sections = useMemo<DocSectionMeta[]>(
+    () => [
+      ...groups.map((g) => ({ id: g.id, label: g.label })),
+      ...(q
+        ? []
+        : [
+            { id: 'record', label: 'What a record is' },
+            { id: 'anchoring', label: 'Anchoring' },
+            { id: 'store', label: 'The store' },
+          ]),
+    ],
+    [groups, q],
+  )
+
+  const hits = groups.reduce((n, g) => n + g.commands.length, 0)
+
   return (
     <DocPage
       current="docs"
-      eyebrow={`reference · ${COMMANDS.reduce((n, g) => n + g.commands.length, 0)} commands`}
+      eyebrow={`reference · ${TOTAL} commands`}
       title="What each command does"
       lede={
         <>
@@ -75,11 +137,39 @@ export default function DocsPage() {
           you have it installed yet? <A href="/install">Start there</A>.
         </>
       }
-      sections={SECTIONS}
+      sections={sections}
     >
-      {COMMANDS.map((group, i) => (
+      <div>
+        <div className="relative">
+          <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-dim" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter commands — try check, or --base"
+            aria-label="Filter commands"
+            className="h-10 w-full border border-white/10 bg-white/[0.02] pr-10 pl-10 font-mono text-[13px] text-silt transition-colors outline-none placeholder:text-dim hover:border-white/20 focus-visible:border-white/30"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              aria-label="Clear filter"
+              className="absolute top-1/2 right-2.5 inline-flex size-6 -translate-y-1/2 items-center justify-center text-dim transition-colors hover:text-silt"
+            >
+              <X className="size-4" />
+            </button>
+          )}
+        </div>
+        {/* Only announced while filtering — a permanent count is noise. */}
+        <p aria-live="polite" className="mt-2.5 font-mono text-[11px] text-dim">
+          {q ? `${hits} of ${TOTAL} commands` : ' '}
+        </p>
+      </div>
+
+      {groups.map((group, i) => (
         <DocSection key={group.id} id={group.id} n={i + 1} title={group.label}>
-          <div className="space-y-7">
+          <div>
             {group.commands.map((c) => (
               <Entry key={c.sig} {...c} />
             ))}
@@ -87,6 +177,27 @@ export default function DocsPage() {
         </DocSection>
       ))}
 
+      {q && hits === 0 && (
+        <p className="border-t border-white/[0.09] pt-7 text-[14.5px] leading-[1.7] text-muted-foreground">
+          No command matches <span className="font-mono text-silt">{query}</span>. The
+          filter reads signatures, descriptions and examples — not the longer notes
+          inside each entry, so try the command name itself, or{' '}
+          <button
+            type="button"
+            onClick={() => setQuery('')}
+            className="text-silt underline underline-offset-4"
+          >
+            clear the filter
+          </button>{' '}
+          and use the page.
+        </p>
+      )}
+
+      {/* Concept sections, hidden while filtering. The filter searches
+          commands; leaving three essays below a "2 of 10 commands" count
+          would read as unfiltered results. */}
+      {!q && (
+        <>
       <DocSection id="record" n={COMMANDS.length + 1} title="What a record is">
         <P>
           One JSON object per line in <M>.whence/records.jsonl</M>. One line per record so
@@ -132,9 +243,13 @@ export default function DocsPage() {
             ] as const
           ).map(([state, tone, desc]) => (
             <div key={state} className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              {/* Same opacity ladder as Gate and DriftDemo: 'ok' and 'bad'
+                  were a green and a red, which are the same white now, so
+                  severity is brightness. ORPHANED also shouts in caps, which
+                  is doing at least as much of the work. */}
               <span
                 className={`font-mono text-[12.5px] ${
-                  tone === 'ok' ? 'text-verdigris' : tone === 'bad' ? 'text-cinnabar' : 'text-dim'
+                  tone === 'bad' ? 'text-silt' : tone === 'ok' ? 'text-silt/55' : 'text-dim'
                 }`}
               >
                 {state}
@@ -186,6 +301,8 @@ export default function DocsPage() {
           this page documents incorrectly is worse than one it omits.
         </P>
       </div>
+        </>
+      )}
     </DocPage>
   )
 }
