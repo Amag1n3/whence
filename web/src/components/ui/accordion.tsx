@@ -93,17 +93,34 @@ function AccordionContent({
     <AccordionPrimitive.Content
       forceMount
       data-slot="accordion-content"
-      className="grid overflow-hidden transition-[grid-template-rows,visibility] duration-200 ease-out data-[state=closed]:invisible data-[state=closed]:grid-rows-[0fr] data-[state=open]:visible data-[state=open]:grid-rows-[1fr]"
+      className="group/panel"
       {...props}
     >
-      <div className="overflow-hidden">
-        <div
-          className={cn(
-            "max-w-[68ch] pt-0 pb-6 text-[15.5px] leading-[1.7] text-muted-foreground",
-            className
-          )}
-        >
-          {children}
+      {/* The animation lives on this child, NOT on Content above.
+          Radix writes inline styles onto the Content node while measuring —
+          `node.style.transitionDuration = "0s"` — and only restores them when
+          its isMountAnimationPrevented ref is false. That ref initialises to
+          `isOpen`, which forceMount pins true, so the 0s never gets cleaned
+          up and outranks every class on that element. Any transition declared
+          up there is silently zeroed; down here Radix cannot reach it. */}
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows,opacity,visibility] duration-300 ease-settle",
+          "group-data-[state=closed]/panel:invisible group-data-[state=closed]/panel:grid-rows-[0fr] group-data-[state=closed]/panel:opacity-0",
+          "group-data-[state=open]/panel:visible group-data-[state=open]/panel:grid-rows-[1fr] group-data-[state=open]/panel:opacity-100",
+        )}
+      >
+        {/* Required by the 0fr→1fr technique: the row collapses, and this
+            clips what no longer fits. Without it the text just overflows. */}
+        <div className="overflow-hidden">
+          <div
+            className={cn(
+              "max-w-[68ch] pt-0 pb-6 text-[15.5px] leading-[1.7] text-muted-foreground",
+              className
+            )}
+          >
+            {children}
+          </div>
         </div>
       </div>
     </AccordionPrimitive.Content>

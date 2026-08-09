@@ -116,6 +116,15 @@
   --radius-lg: 0rem;
   --radius-xl: 0rem;
 
+  /* The site's one easing curve. Fast off the mark, then a long decelerating
+     settle — motion that arrives quickly and comes to rest rather than
+     gliding at a constant speed, which is what reads as "instant" even when
+     the duration is not.
+     It was already the curve in Reveal and DriftDemo, written as a literal
+     array in both. Naming it here makes the CSS side use the same value
+     instead of a second curve nobody chose on purpose. */
+  --ease-settle: cubic-bezier(0.16, 0.8, 0.28, 1);
+
   --font-display: 'Archivo Variable', ui-sans-serif, system-ui, sans-serif;
   --font-sans: 'Instrument Sans Variable', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
