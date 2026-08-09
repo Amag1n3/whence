@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { Check, Copy } from 'lucide-react'
-import { toast } from 'sonner'
 
 /* Lifted out of App when /install and /docs needed it. Same rule as Chrome:
    three pages render code blocks now, and a block that exists three times
@@ -36,6 +35,10 @@ export function Code({ children, caption }: { children: string; caption?: string
     try {
       await navigator.clipboard.writeText(children)
       setCopied(true)
+      // Imported here, not at the top: sonner is 32kB and nothing needs it
+      // until someone actually copies. The tick has already flipped, so the
+      // await costs no perceived latency.
+      const { toast } = await import('sonner')
       toast('Copied to clipboard')
     } catch {
       /* writeText rejects without a secure context, and navigator.clipboard

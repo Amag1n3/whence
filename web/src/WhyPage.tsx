@@ -1,8 +1,16 @@
+import { lazy, Suspense } from 'react'
 import { Check, Minus } from 'lucide-react'
 
 import { Reveal } from '@/components/Reveal'
 import { DocPage, DocSection, P, type DocSectionMeta } from '@/components/DocPage'
-import { DriftDemo } from '@/components/DriftDemo'
+/* The only component left on the site that genuinely needs motion/react —
+   AnimatePresence and layout animation, which CSS cannot do. Loading it
+   lazily keeps its 119kB runtime off /why's critical path; it sits well below
+   the fold and does not animate until scrolled to anyway. The placeholder
+   reserves the frame so nothing shifts when it arrives. */
+const DriftDemo = lazy(() =>
+  import('@/components/DriftDemo').then((m) => ({ default: m.DriftDemo })),
+)
 import { Gate } from '@/components/Gate'
 import { REPO } from '@/components/Chrome'
 import { cn } from '@/lib/utils'
@@ -166,7 +174,13 @@ export default function WhyPage() {
           that confidently points at the wrong line teaches you to distrust everything it
           says — so a record that cannot find its anchor says so.
         </P>
-        <DriftDemo />
+        <Suspense
+          fallback={
+            <div className="lit min-h-[290px] rounded-xl border border-white/10 bg-terminal" />
+          }
+        >
+          <DriftDemo />
+        </Suspense>
       </DocSection>
 
       {/* ------------------------------------------------------------ 04 */}
