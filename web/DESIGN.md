@@ -102,6 +102,11 @@ typography:
     fontWeight: 400
     lineHeight: 1.4
     letterSpacing: "0.02em"
+motion:
+  ease-settle: "cubic-bezier(0.16, 0.8, 0.28, 1)"
+  duration-panel: "300ms"
+  duration-overlay-in: "130ms"
+  duration-overlay-out: "90ms"
 rounded:
   none: "0px"
   sm: "0px"
@@ -336,7 +341,33 @@ check, and it is why the script lists `ochre`, `verdigris` and `cinnabar`
 separately even though all three are the same white today: if one of them is
 given a hue again, it shows up as its own row rather than hiding behind `silt`.
 
-## Typography
+## Motion
+
+**One curve: `--ease-settle`, `cubic-bezier(0.16, 0.8, 0.28, 1)`.** Fast off the
+mark, then a long decelerating settle. It was already the curve in `Reveal` and
+`DriftDemo`, written as a literal array in each; it is a named token now so the
+CSS side uses the same value rather than a second curve nobody chose.
+
+A linear or near-linear ease is what makes a 300ms transition read as instant —
+the eye reads constant velocity as a jump. The deceleration is what makes the
+same duration feel fluid.
+
+Two durations, and the difference between them is the point:
+
+- **Panels — 300ms.** An accordion answer expanding is content arriving; it
+  should take long enough to be followed.
+- **Overlays — 130ms in, 90ms out.** The search palette is a tool being picked
+  up. Exits are quicker than entrances everywhere: dismissing something should
+  not make you wait for it to finish leaving.
+
+**Where animation is declared matters more than what it says.** Radix's
+collapsible writes `transitionDuration = "0s"` inline onto its Content node
+while measuring, and restores it only when its internal
+`isMountAnimationPrevented` ref is false — a ref that initialises to `isOpen`,
+which `forceMount` pins true. Any transition declared on that element is
+silently zeroed and no class will win against it. `AccordionContent` puts the
+transition on a child instead. If a Radix-driven animation ever looks like it
+is not running at all, check for inline styles before touching the CSS.
 
 Three families, each with one job:
 
