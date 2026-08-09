@@ -72,17 +72,23 @@ const FINDINGS: Finding[] = [
 ]
 
 /* Tailwind cannot build a class name from a variable, so the mapping is
-   spelled out rather than interpolated. */
+   spelled out rather than interpolated.
+
+   These were three hues. On a monochrome page three hues collapse into one
+   white and the rows stop being distinguishable, so severity is an opacity
+   ladder now: a finding gets brighter the worse it is. The ✓/✗ marks and the
+   prose were always carrying the actual meaning — the colour was
+   reinforcement, and this keeps the reinforcement without the colour. */
 const TEXT = {
-  verdigris: 'text-verdigris',
-  ochre: 'text-ochre',
-  cinnabar: 'text-cinnabar',
+  verdigris: 'text-silt/55',
+  ochre: 'text-silt/80',
+  cinnabar: 'text-silt',
 } as const
 
 const RULE = {
-  verdigris: 'border-verdigris bg-verdigris/[0.05]',
-  ochre: 'border-ochre bg-ochre/[0.05]',
-  cinnabar: 'border-cinnabar bg-cinnabar/[0.05]',
+  verdigris: 'border-white/20 bg-white/[0.02]',
+  ochre: 'border-white/45 bg-white/[0.04]',
+  cinnabar: 'border-white bg-white/[0.07]',
 } as const
 
 export function Gate() {
@@ -97,7 +103,10 @@ export function Gate() {
           <span className="font-mono text-[12.5px] text-silt/85">
             <span className="text-ochre/70">$ </span>whence check --base origin/main
           </span>
-          <span className="ml-auto rounded-full border border-cinnabar/40 bg-cinnabar/[0.09] px-2.5 py-0.5 font-mono text-[11px] tracking-wide text-cinnabar">
+          {/* Inverted rather than tinted. With no red available, the loudest
+              thing a monochrome page can do is flip to a light fill — and
+              this is the one element on the site that has earned it. */}
+          <span className="ml-auto bg-silt px-2.5 py-0.5 font-mono text-[11px] font-medium tracking-wide text-basin">
             exit 1
           </span>
         </div>

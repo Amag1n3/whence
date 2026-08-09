@@ -1,7 +1,11 @@
+import { useEffect, useState } from 'react'
 import type { MouseEvent, ReactNode } from 'react'
+import { motion, useReducedMotion } from 'motion/react'
+import { ChevronRight } from 'lucide-react'
 
 import { Reveal } from '@/components/Reveal'
-import { Header, Footer, SHELL } from '@/components/Chrome'
+import { Header, Footer, SHELL, type PageKey } from '@/components/Chrome'
+import { Toaster } from '@/components/ui/sonner'
 import { cn } from '@/lib/utils'
 
 /* The shell every reference page shares: hero, a sticky index, numbered
@@ -22,6 +26,59 @@ const jump = (id: string) => (e: MouseEvent<HTMLAnchorElement>) => {
   document.getElementById(id)?.scrollIntoView()
 }
 
+/** Which section is being read: the deepest one whose top has crossed a third
+ *  of the viewport.
+ *
+ *  Not IntersectionObserver, which answers "what is on screen" — on a page
+ *  with short sections that is three or four of them at once, and the last
+ *  section of a document never wins because the page stops scrolling before
+ *  it reaches the middle. "Deepest one already passed" has neither problem
+ *  and needs no thresholds tuned. Same rule the strata rail used.
+ *
+ *  Reads getBoundingClientRect rather than offsetTop so it does not depend on
+ *  which ancestor happens to be positioned. */
+function useActiveSection(sections: DocSectionMeta[]) {
+  const [active, setActive] = useState(sections[0]?.id ?? '')
+
+  useEffect(() => {
+    const measure = () => {
+      const line = window.innerHeight * 0.33
+      let current = sections[0]?.id ?? ''
+      sections.forEach((s) => {
+        const el = document.getElementById(s.id)
+        if (el && el.getBoundingClientRect().top <= line) current = s.id
+      })
+      // Same value short-circuits in React, so this does not re-render per tick.
+      setActive(current)
+    }
+
+    /* Coalesced to one measurement per frame. getBoundingClientRect forces
+       layout, and the unthrottled version ran it once per section per scroll
+       event — sixty-one of them on /faq, several times a frame. That is the
+       other half of what felt choppy, and no amount of easing on the marker
+       would have hidden it. */
+    let frame = 0
+    const onScroll = () => {
+      if (frame) return
+      frame = window.requestAnimationFrame(() => {
+        frame = 0
+        measure()
+      })
+    }
+
+    measure()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll)
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame)
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+    }
+  }, [sections])
+
+  return active
+}
+
 export function DocPage({
   current,
   eyebrow,
@@ -30,13 +87,16 @@ export function DocPage({
   sections,
   children,
 }: {
-  current: 'install' | 'docs' | 'faq'
+  current: PageKey
   eyebrow: string
   title: string
   lede: ReactNode
   sections: DocSectionMeta[]
   children: ReactNode
 }) {
+  const active = useActiveSection(sections)
+  const reduced = useReducedMotion()
+
   return (
     <div className="grain relative min-h-screen">
       <Header current={current} />
@@ -66,18 +126,51 @@ export function DocPage({
                 <p className="font-mono text-[11px] tracking-[0.2em] text-dim uppercase">
                   contents
                 </p>
-                <ul className="mt-4 space-y-2.5">
-                  {sections.map((s) => (
-                    <li key={s.id}>
-                      <a
-                        href={`#${s.id}`}
-                        onClick={jump(s.id)}
-                        className="text-[13.5px] leading-[1.5] text-muted-foreground transition-colors hover:text-ochre"
-                      >
-                        {s.label}
-                      </a>
-                    </li>
-                  ))}
+                {/* One hairline running the length of the index, with the
+                    active item's own 2px segment sitting on top of it at
+                    -ml-px. The rail is the position indicator: you can see
+                    how far down the document you are without reading a
+                    single label. Square ends, no dot — the marker is a
+                    measurement tick, same as every other number here. */}
+                <ul className="mt-4 space-y-0.5 border-l border-white/10">
+                  {sections.map((s) => {
+                    const isActive = active === s.id
+                    return (
+                      <li key={s.id} className="relative">
+                        {/* One marker for the whole list, not a border that
+                            flips on each item. A border-colour transition
+                            cross-fades in place — the bar blinks out at the
+                            old row and blinks in at the new one, which is
+                            what read as choppy. Sharing a layoutId makes
+                            motion treat it as the same element moving, so it
+                            travels the distance instead. */}
+                        {isActive && (
+                          <motion.span
+                            layoutId="doc-index-marker"
+                            className="absolute inset-y-0 -left-px w-0.5 bg-ochre"
+                            transition={
+                              reduced
+                                ? { duration: 0 }
+                                : { type: 'spring', stiffness: 420, damping: 34, mass: 0.6 }
+                            }
+                          />
+                        )}
+                        <a
+                          href={`#${s.id}`}
+                          onClick={jump(s.id)}
+                          aria-current={isActive ? 'location' : undefined}
+                          className={cn(
+                            'flex min-h-6 items-center py-1.5 pl-4 text-[13.5px] leading-[1.5] transition-colors duration-300',
+                            isActive
+                              ? 'text-silt'
+                              : 'text-muted-foreground hover:text-silt',
+                          )}
+                        >
+                          {s.label}
+                        </a>
+                      </li>
+                    )
+                  })}
                 </ul>
               </nav>
 
@@ -88,33 +181,77 @@ export function DocPage({
       </main>
 
       <Footer />
+
+      {/* Mounted here rather than per page: every page that renders a
+          copyable <Code> block goes through DocPage, and the landing and
+          contact pages have none. One Toaster, no duplicates. */}
+      <Toaster position="top-right" />
     </div>
   )
 }
 
-/** One numbered section. The index number is ochre and monospace for the same
- *  reason every number on this site is: monospace here is measurement. */
+/** One numbered section. The index number is monospace for the same reason
+ *  every number on this site is: monospace here is measurement.
+ *
+ *  `collapsible` folds the body behind the heading, for sections that are a
+ *  branch rather than a step — the reader who is not gating CI should not
+ *  scroll through how to. Native <details>, not Radix: it keeps its content
+ *  in the DOM, so find-in-page still reaches inside, and Chromium expands it
+ *  automatically on a match. Radix unmounts closed content and would have
+ *  made three sections of /install invisible to browser search. */
 export function DocSection({
   id,
   n,
   title,
+  hint,
+  collapsible = false,
   children,
 }: {
   id: string
   n: number
   title: string
+  /** Says WHEN this applies. Only meaningful on a collapsible section. */
+  hint?: string
+  collapsible?: boolean
   children: ReactNode
 }) {
+  const head = (
+    <>
+      <span className="font-mono text-[11px] tracking-[0.18em] text-ochre">
+        {String(n).padStart(2, '0')}
+      </span>
+      <h2 className="text-[clamp(1.3rem,2vw,1.6rem)] leading-[1.2]">{title}</h2>
+    </>
+  )
+
+  if (!collapsible) {
+    return (
+      <section id={id} className="scroll-mt-24">
+        <Reveal>
+          <div className="flex items-baseline gap-4">{head}</div>
+          <div className="mt-5 space-y-5">{children}</div>
+        </Reveal>
+      </section>
+    )
+  }
+
   return (
     <section id={id} className="scroll-mt-24">
       <Reveal>
-        <div className="flex items-baseline gap-4">
-          <span className="font-mono text-[11px] tracking-[0.18em] text-ochre">
-            {String(n).padStart(2, '0')}
-          </span>
-          <h2 className="text-[clamp(1.3rem,2vw,1.6rem)] leading-[1.2]">{title}</h2>
-        </div>
-        <div className="mt-5 space-y-5">{children}</div>
+        <details className="group">
+          <summary className="flex cursor-pointer list-none items-baseline gap-4 [&::-webkit-details-marker]:hidden">
+            {head}
+            <span className="ml-auto flex shrink-0 items-center gap-2 self-center">
+              {hint && (
+                <span className="hidden font-mono text-[11px] tracking-wide text-dim sm:block">
+                  {hint}
+                </span>
+              )}
+              <ChevronRight className="size-4 text-dim transition-transform duration-200 group-open:rotate-90" />
+            </span>
+          </summary>
+          <div className="mt-5 space-y-5">{children}</div>
+        </details>
       </Reveal>
     </section>
   )

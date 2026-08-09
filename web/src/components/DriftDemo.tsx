@@ -115,10 +115,18 @@ export function DriftDemo() {
   }, [i, held, inView, reduced])
 
   const stage = STAGES[i]
+  /* Was three hues; monochrome collapses those to one white, so decay is an
+     opacity ladder instead — the record gets brighter as it gets worse. The
+     integrity percentage and the state label next to it were always the
+     literal signal, so nothing is lost that the colour alone was carrying. */
   const toneText =
-    stage.tone === 'cinnabar' ? 'text-cinnabar' : stage.tone === 'ochre' ? 'text-ochre' : 'text-verdigris'
+    stage.tone === 'cinnabar'
+      ? 'text-silt'
+      : stage.tone === 'ochre'
+        ? 'text-silt/85'
+        : 'text-silt/55'
   const toneBg =
-    stage.tone === 'cinnabar' ? 'bg-cinnabar' : stage.tone === 'ochre' ? 'bg-ochre' : 'bg-verdigris'
+    stage.tone === 'cinnabar' ? 'bg-silt' : stage.tone === 'ochre' ? 'bg-silt/85' : 'bg-silt/55'
 
   return (
     <div
@@ -156,10 +164,10 @@ export function DriftDemo() {
                     'flex items-baseline gap-4 border-l-2 pr-6 transition-colors duration-500',
                     l.anchored
                       ? stage.tone === 'cinnabar'
-                        ? 'border-cinnabar bg-cinnabar/[0.08]'
+                        ? 'border-white bg-white/[0.08]'
                         : stage.tone === 'ochre'
-                          ? 'border-ochre bg-ochre/[0.07]'
-                          : 'border-verdigris bg-verdigris/[0.07]'
+                          ? 'border-white/50 bg-white/[0.05]'
+                          : 'border-white/25 bg-white/[0.03]'
                       : 'border-transparent',
                   )}
                 >
