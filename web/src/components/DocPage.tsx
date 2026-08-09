@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { MouseEvent, ReactNode } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
-import { ChevronRight } from 'lucide-react'
+import { Plus } from 'lucide-react'
 
 import { Reveal } from '@/components/Reveal'
 import { Header, Footer, SHELL, type PageKey } from '@/components/Chrome'
@@ -238,8 +238,14 @@ export function DocSection({
   return (
     <section id={id} className="scroll-mt-24">
       <Reveal>
+        {/* Wears the accordion's clothes — same rotating plus marker, same
+            hover lift — but stays a native <details>. Radix wraps its trigger
+            in its own heading element, which would bury the numbered <h2>
+            these sections are anchored and scroll-spied by. Matching the
+            accordion visually costs nothing; matching it structurally would
+            cost the page its heading outline. */}
         <details className="group">
-          <summary className="flex cursor-pointer list-none items-baseline gap-4 [&::-webkit-details-marker]:hidden">
+          <summary className="-mx-4 flex cursor-pointer list-none items-baseline gap-4 rounded-none px-4 py-2 transition-colors hover:bg-white/[0.035] [&::-webkit-details-marker]:hidden">
             {head}
             <span className="ml-auto flex shrink-0 items-center gap-2 self-center">
               {hint && (
@@ -247,7 +253,7 @@ export function DocSection({
                   {hint}
                 </span>
               )}
-              <ChevronRight className="size-4 text-dim transition-transform duration-200 group-open:rotate-90" />
+              <Plus className="size-4 text-dim transition-transform duration-200 group-open:rotate-45" />
             </span>
           </summary>
           <div className="mt-5 space-y-5">{children}</div>
