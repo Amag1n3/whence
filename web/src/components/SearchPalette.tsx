@@ -64,6 +64,21 @@ export default function SearchPalette({
       title="Search"
       description="Search pages, commands and questions"
       commandProps={{ filter: score }}
+      /* Overrides three shadcn dialog defaults, all for the same reason.
+       *
+       * zoom-in-95 → zoom-in-100 removes the scale entirely. A panel that
+       * grows into place is the product-app idiom; this site's vernacular is
+       * terminals and exit codes, and a terminal does not zoom open. Fade
+       * only.
+       *
+       * duration 200 → 130 in, 90 out. Exits read best faster than entrances,
+       * and a search field that takes a fifth of a second to arrive feels
+       * like it is thinking when it is not.
+       *
+       * Centred → 12vh from the top. The trigger is in the header, so the
+       * eye is already up there; a dead-centre modal makes it travel down and
+       * back. Wider too — results are prose, not command names. */
+      className="top-[12vh] max-h-[76vh] translate-y-0 duration-[130ms] data-[state=open]:zoom-in-100 data-[state=closed]:duration-[90ms] data-[state=closed]:zoom-out-100 sm:max-w-2xl"
     >
       <CommandInput placeholder="Search pages, commands and questions…" />
       <CommandList>

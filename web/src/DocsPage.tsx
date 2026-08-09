@@ -1,7 +1,13 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { ChevronRight, Search, X } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
 import { Code } from '@/components/Code'
 import { DocPage, DocSection, P, type DocSectionMeta } from '@/components/DocPage'
 import { REPO } from '@/components/Chrome'
@@ -26,59 +32,35 @@ const M = ({ children }: { children: ReactNode }) => (
   <code className="font-mono text-[13px] text-silt">{children}</code>
 )
 
-/** One command: signature, what it does, why, and an example if it earns one.
+/** One command, as an accordion row — the same control /faq uses, because two
+ *  disclosure widgets on one site is one too many. This was a native <details>
+ *  with a chevron before the accordion became the house pattern.
  *
- *  Collapsed is NOT hidden. The signature and the one-line description stay
- *  visible at all times — those are what a reader scans for, and folding them
- *  away would trade a long page for a page you cannot skim, which is worse.
- *  Only the rationale and the worked example fold, and a command with neither
- *  is not a disclosure at all: it renders as a plain row, because a control
- *  that opens onto nothing is a small lie about there being more to read. */
-function Entry({
-  sig,
-  what,
-  note,
-  example,
-}: {
-  sig: string
-  what: string
-  note?: ReactNode
-  example?: string
-}) {
-  const head = (
-    <>
-      <h3 className="font-mono text-[13.5px] leading-[1.6] font-medium break-words text-silt">
-        {sig}
-      </h3>
-      <p className="mt-1.5 max-w-[56ch] text-[14.5px] leading-[1.68] text-muted-foreground">
-        {what}
-      </p>
-    </>
-  )
-
-  if (!note && !example) {
-    return <div className="border-t border-white/[0.09] py-4 pl-7">{head}</div>
-  }
-
+ *  Collapsed is NOT hidden. The signature and the one-line description both
+ *  stay in the trigger, so all eleven commands remain skimmable in one screen.
+ *  Only the rationale and the worked example fold away. Every command has at
+ *  least one of those, so there is no such thing here as a row that opens onto
+ *  nothing. */
+function Entry({ sig, what, note, example }: Command) {
   return (
-    <details className="group border-t border-white/[0.09]">
-      <summary className="flex cursor-pointer list-none items-start gap-3 py-4 [&::-webkit-details-marker]:hidden">
-        <ChevronRight className="mt-1 size-4 shrink-0 text-dim transition-transform duration-200 group-open:rotate-90" />
-        <span className="min-w-0">{head}</span>
-      </summary>
-      <div className="pb-6 pl-7">
-        {note && (
-          <p className="max-w-[56ch] text-[14.5px] leading-[1.68] text-muted-foreground">
-            {note}
-          </p>
-        )}
+    <AccordionItem value={sig}>
+      <AccordionTrigger>
+        <span className="flex min-w-0 flex-col gap-1.5">
+          <span className="font-mono text-[13.5px] leading-[1.5] break-words">{sig}</span>
+          <span className="text-[14.5px] leading-[1.6] font-normal text-muted-foreground">
+            {what}
+          </span>
+        </span>
+      </AccordionTrigger>
+      <AccordionContent>
+        {note && <p className="max-w-[56ch] text-[14.5px] leading-[1.68]">{note}</p>}
         {example && (
-          <div className="mt-4">
+          <div className={note ? 'mt-4' : undefined}>
             <Code>{example}</Code>
           </div>
         )}
-      </div>
-    </details>
+      </AccordionContent>
+    </AccordionItem>
   )
 }
 
@@ -169,11 +151,21 @@ export default function DocsPage() {
 
       {groups.map((group, i) => (
         <DocSection key={group.id} id={group.id} n={i + 1} title={group.label}>
-          <div>
+          {/* Keyed on the query so that filtering remounts the accordion and
+              re-reads defaultValue: a filtered list opens its matches, and
+              clearing the filter collapses everything again. Having narrowed
+              eleven commands down to one, being made to click it as well is
+              a step that earns nothing. */}
+          <Accordion
+            key={q}
+            type="multiple"
+            defaultValue={q ? group.commands.map((c) => c.sig) : []}
+            className="border-t border-white/[0.07]"
+          >
             {group.commands.map((c) => (
               <Entry key={c.sig} {...c} />
             ))}
-          </div>
+          </Accordion>
         </DocSection>
       ))}
 
