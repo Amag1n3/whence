@@ -66,33 +66,45 @@ function AccordionContent({
   ...props
 }: React.ComponentProps<typeof AccordionPrimitive.Content>) {
   return (
-    /* forceMount keeps closed answers in the DOM.
+    /* forceMount keeps closed answers in the DOM, so Googlebot sees all 61
+     * instead of 61 headings and the one answer that opens by default —
+     * roughly 4,000 words of the site's largest page. Content hidden with CSS
+     * is indexed; content that was never mounted is not there to index.
      *
-     * Radix unmounts closed content by default, which meant Googlebot
-     * rendered /faq and saw 61 headings plus the single answer that opens by
-     * default — roughly 4,000 words of the site's largest page did not exist
-     * as far as search was concerned. Content that is in the DOM but hidden
-     * with CSS is indexed normally; content that was never mounted is not
-     * there to index.
+     * The animation does NOT use Radix's keyframes, and cannot. Those
+     * interpolate to --radix-accordion-content-height, which the collapsible
+     * primitive measures with getBoundingClientRect. forceMount pins
+     * `isPresent` true, so Radix never applies its own `hidden`, so we have to
+     * hide it ourselves — and anything that hides it (display:none, height:0)
+     * is also unmeasurable, leaving the keyframe interpolating to zero. The
+     * animation was resting on a measurement that could not happen.
      *
-     * The cost is the close animation: `hidden` applies the moment state
-     * flips, so closing snaps rather than collapsing. Opening still animates.
-     * display:none also keeps the closed text out of the accessibility tree,
-     * which height:0 would not have done — a screen reader would have read
-     * all 61 answers straight through. Correctness over the animation. */
+     * grid-template-rows 0fr→1fr needs no measured value at all: the row
+     * sizes to the content, and the browser interpolates between them. The
+     * inner overflow-hidden wrapper is what makes that collapse rather than
+     * overflow, and is not optional.
+     *
+     * `visibility` is in the transition list on purpose. It animates
+     * discretely — flipping to `visible` at the START of the transition and
+     * to `hidden` at the END — which is exactly the behaviour wanted here:
+     * content appears immediately on open, and stays rendered through the
+     * whole collapse before leaving the accessibility tree. Without it,
+     * height-zero content would still be read aloud by a screen reader. */
     <AccordionPrimitive.Content
       forceMount
       data-slot="accordion-content"
-      className="overflow-hidden data-[state=closed]:hidden data-[state=open]:animate-accordion-down"
+      className="grid overflow-hidden transition-[grid-template-rows,visibility] duration-200 ease-out data-[state=closed]:invisible data-[state=closed]:grid-rows-[0fr] data-[state=open]:visible data-[state=open]:grid-rows-[1fr]"
       {...props}
     >
-      <div
-        className={cn(
-          "max-w-[68ch] pt-0 pb-6 text-[15.5px] leading-[1.7] text-muted-foreground",
-          className
-        )}
-      >
-        {children}
+      <div className="overflow-hidden">
+        <div
+          className={cn(
+            "max-w-[68ch] pt-0 pb-6 text-[15.5px] leading-[1.7] text-muted-foreground",
+            className
+          )}
+        >
+          {children}
+        </div>
       </div>
     </AccordionPrimitive.Content>
   )
