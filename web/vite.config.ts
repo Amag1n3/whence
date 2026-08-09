@@ -11,7 +11,28 @@ export default defineConfig({
   base: './',
   plugins: [react(), tailwindcss()],
   resolve: {
-    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      /* React is swapped for Preact's compat layer at build time. react and
+         react-dom were ~200K of the ~215K every page had to parse before
+         anything appeared; compat is ~25K, and the shared chunk went 213K to
+         35K (68.2K to 12.3K gzipped).
+
+         `react` and `react-dom` stay in package.json on purpose. Nothing
+         bundles them — this alias replaces them — but @types/react is what
+         typecheck runs against, so tsc still validates every call against the
+         real React API and would flag anything compat does not implement.
+         Removing them would silently drop that check.
+
+         compat reports itself as React 18.3.1. Anything added later that
+         branches on the React version, or relies on a 19-only behaviour like
+         ref-as-a-prop on a plain function component, will see 18 and needs
+         checking in a browser rather than trusting the build. */
+      react: 'preact/compat',
+      'react-dom': 'preact/compat',
+      'react-dom/client': 'preact/compat/client',
+      'react/jsx-runtime': 'preact/jsx-runtime',
+    },
   },
   build: {
     // Six entries, not a router. The site is six static documents; a
