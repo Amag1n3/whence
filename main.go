@@ -92,7 +92,7 @@ func usage() {
                             command, a commit, a link. Never another record.
   whence backfill [dir]     harvest decisions already written in your comments.
                             HACK:, WORKAROUND:, XXX:, GOTCHA:, ponytail: always;
-                            NOTE:, TODO:, FIXME:, WARNING:, CAVEAT: with a reason.
+                            NOTE:, WARNING:, CAVEAT: with a reason.
   whence rm <id> [-w why]   retract one record, logging why it was wrong
   whence confirm <id>       record that a human has checked an agent-written record
   whence reground <id> -e <ref> [-e ...]
@@ -205,8 +205,11 @@ func renderContext(rs []Resolved) string {
 	var b strings.Builder
 	b.WriteString(contextPreamble)
 	for i, r := range rs {
-		line := fmt.Sprintf("- [%s] %s — %s\n  why: %s\n  anchor: %s%s\n  source: %s\n",
-			r.Date, locate(r), r.Decision, r.Why, r.Anchor.State, integrity(r), r.Source)
+		line := fmt.Sprintf("- [%s] %s — %s\n", r.Date, locate(r), r.Decision)
+		if r.Why != "" {
+			line += fmt.Sprintf("  why: %s\n", r.Why)
+		}
+		line += fmt.Sprintf("  anchor: %s%s\n  source: %s\n", r.Anchor.State, integrity(r), r.Source)
 		for _, g := range r.Grounds {
 			line += fmt.Sprintf("  evidence: %s\n", ground(g))
 		}

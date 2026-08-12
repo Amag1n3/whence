@@ -15,7 +15,7 @@
 > authorship with a confirmation step, a committed retraction log, `whence add`,
 > `whence rm`, `whence confirm`, `whence reground`, `whence reanchor`, and `whence backfill` — which harvests decisions already
 > written down as `HACK:` / `WORKAROUND:` / `ponytail:` comments, and as
-> `NOTE:` / `TODO:` notes that give a reason — so a store is non-empty without
+> `NOTE:` / `WARNING:` / `CAVEAT:` notes that give a reason — so a store is non-empty without
 > anyone retyping anything.
 >
 > **Capture is not built.** Records are authored deliberately, because signal
@@ -244,10 +244,11 @@ write split cleanly in two:
 | Marker | Harvested |
 |---|---|
 | `HACK:` `WORKAROUND:` `XXX:` `GOTCHA:` `ponytail:` | **Always.** The word is itself the admission that a choice was made against a constraint. |
-| `NOTE:` `TODO:` `TODO(owner):` `FIXME:` `WARNING:` `CAVEAT:` | **Only when the note gives a reason** — *because*, *so that*, *since*, *otherwise*, *to avoid*, *rather than*. |
+| `NOTE:` `WARNING:` `CAVEAT:` | **Only when the note gives a reason** — *because*, *so that*, *since*, *otherwise*, *to avoid*, *rather than*. `TODO:` and `FIXME:` are excluded because they propose future work rather than explain current code. |
 
 That second rule is the whole difference between a store worth reading and one
-full of `TODO: fix this`. A decision says why; a task only says what. The reason
+full of tasks. The reason-word gate cannot distinguish a reason for current code
+from a reason for a proposed change, so `TODO:` and `FIXME:` stay out. The reason
 may appear anywhere in the comment block, not just the first line.
 
 The word list is deliberately narrow, so a reason phrased around it is missed. A
