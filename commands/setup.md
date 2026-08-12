@@ -49,7 +49,7 @@ whence backfill
 ```
 
 That reads `HACK:` `WORKAROUND:` `XXX:` `GOTCHA:` `ponytail:` comments always,
-and `NOTE:` `TODO:` `FIXME:` `WARNING:` `CAVEAT:` only where the note gives a
+and `NOTE:` `WARNING:` `CAVEAT:` only where the note gives a
 reason. It is a dry run by default — it shows what it found and writes nothing,
 because the store is committed and shared. Show the user the list, and only when
 they agree does it get written:

@@ -128,9 +128,31 @@ never changelogs. Prose that hedges, sells, or uses "simply", "just",
 
 Real, and future work must use these rather than inventing better ones:
 
-- **`whence backfill` on a clean clone of `prometheus/prometheus`** — 27 records
-  across 23 files in roughly 3 seconds, spanning Go and TypeScript. The strongest
-  demonstration the project has, and it is on a codebase nobody here wrote.
+- **`whence backfill` on a clean clone of `prometheus/prometheus`** — 9 records
+  across 11 files in roughly 3 seconds, after excluding `TODO:` and `FIXME:`
+  proposals. Measured 2026-08-09. The strongest demonstration the project has on
+  a codebase nobody here wrote.
+- **`whence backfill` on the Go standard library** — 50 records across 7,710
+  files, down from 257 before `TODO:` and `FIXME:` were dropped from the marker
+  set. Measured 2026-08-09.
+- **The cost of that narrowing, measured rather than assumed.** A hand-read
+  sample of 19 stdlib records before the change held 5 genuine decisions; 2 of
+  those 5 survive it. Precision roughly doubled (~26% → ~54% of records being
+  decisions) and recall on decisions dropped by more than half. `TODO:`
+  sometimes carries a real explanation of current code — `runtime/mgcpacer.go`
+  was one of the best records in the corpus and is now missed. The trade was
+  taken deliberately: a store nobody reads is worth less than a store missing
+  entries, and a missed note is recoverable by hand.
+- **Comment culture varies about tenfold, and backfill's yield varies with it.**
+  Records per 1,000 source files: Go stdlib 33 before the narrowing, a private
+  Node backend 12, a private React frontend 3.5. Backfill is strongest in mature,
+  review-heavy codebases and weakest in fast-moving product code.
+- **Cross-file invariants are a real and unmodelled shape.** Two independent
+  instances found on 2026-08-09 in unrelated corpora: `reflect/value.go:2895`
+  ("These values must match ../runtime/select.go:/selectDir") and a private
+  repo's "norm() here MUST stay identical to norm() in the ingest worker". A
+  record anchors one span in one file, so the hook fires on the side that already
+  carries the warning and stays silent on the side where the damage happens.
 - **Hook latency: 6.3 ms per fire**, measured as 100 invocations in 0.629 s wall.
 - **`whence capture` over this project's own sessions**: 361 thinking blocks with
   zero carrying text, so capture reads the stated explanation and never the

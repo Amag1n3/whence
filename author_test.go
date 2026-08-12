@@ -134,8 +134,8 @@ func TestHarvestIgnoresTheMarkerOutsideAComment(t *testing.T) {
 }
 
 // The marker set, and the line it draws. `HACK:` and friends are admissions on
-// their own; `NOTE:` and `TODO:` are mostly descriptive and only count when the
-// note says why — which is what separates a decision from a task.
+// their own; `NOTE:` and friends describe current code only when the note says
+// why. TODO and FIXME are proposals, even when they carry a reason.
 func TestHarvestMarkerSet(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -154,9 +154,9 @@ func TestHarvestMarkerSet(t *testing.T) {
 			"// NOTE: see the design doc.", "func f() {}"}, false, ""},
 		{"bare todo is a task, not a decision", []string{
 			"// TODO: fix this properly.", "func f() {}"}, false, ""},
-		{"todo with an owner and a reason", []string{
+		{"todo with an owner and a reason is still a task", []string{
 			"// TODO(amogh): drop the shim since v2 ships in March.",
-			"func f() {}"}, true, "TODO comment"},
+			"func f() {}"}, false, ""},
 		{"the reason may be on a continuation line", []string{
 			"// NOTE: three retries, not one.",
 			"// A single attempt fails the batch because the upstream 502s under load.",
@@ -180,6 +180,12 @@ func TestHarvestMarkerSet(t *testing.T) {
 				t.Errorf("source = %q, want %q", got[0].src, c.wantSrc)
 			}
 		})
+	}
+}
+
+func TestBackfillRejectsFlagsAfterTheDirectory(t *testing.T) {
+	if err := validateBackfillArgs([]string{".", "--yes"}); err == nil {
+		t.Fatal("a flag after the directory must be rejected rather than ignored")
 	}
 }
 

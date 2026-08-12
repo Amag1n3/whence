@@ -690,6 +690,10 @@ func backfillCmd(args []string) {
 	if err := fl.Parse(args); err != nil {
 		os.Exit(2)
 	}
+	if err := validateBackfillArgs(fl.Args()); err != nil {
+		fmt.Fprintln(os.Stderr, "whence:", err)
+		os.Exit(2)
+	}
 	dir := "."
 	if fl.NArg() > 0 {
 		dir = fl.Arg(0)
@@ -766,6 +770,15 @@ func backfillCmd(args []string) {
 	fmt.Printf("\n%d record(s) added, %d already present\n", added, skipped)
 }
 
+func validateBackfillArgs(args []string) error {
+	for _, a := range args {
+		if strings.HasPrefix(a, "-") {
+			return fmt.Errorf("unrecognised argument %q — flags must come before the directory", a)
+		}
+	}
+	return nil
+}
+
 const maxSourceBytes = 1 << 20
 
 // The marker set: which comment prefixes count as a decision.
@@ -783,12 +796,14 @@ var (
 	// comment is a decision by construction.
 	alwaysMarkers = []string{"ponytail:", "HACK:", "WORKAROUND:", "XXX:", "GOTCHA:"}
 
-	// reasonMarkers are mostly descriptive. Harvesting them wholesale fills a
-	// committed, shared store with "fix this later", which is a task wearing a
-	// decision's clothes — and a store full of those is one people stop reading,
-	// which is worse than an empty one. They are admitted only when the note says
-	// WHY, because that is the only part a record exists to carry.
-	reasonMarkers = []string{"NOTE:", "TODO:", "FIXME:", "WARNING:", "CAVEAT:"}
+	// reasonMarkers are the comments that describe code already present. TODO and
+	// FIXME are deliberately excluded: even when they give a reason, that reason
+	// explains a proposed change rather than why the current code is this way.
+	// The reason-word gate could not tell those apart — today's stdlib sample had
+	// 14 task-shaped TODOs pass it — so narrowing the marker set is the smaller
+	// honest filter. A missed task is noise avoided; a missing decision is still
+	// recoverable by hand.
+	reasonMarkers = []string{"NOTE:", "WARNING:", "CAVEAT:"}
 
 	// reasonWords are what giving a reason sounds like. Deliberately a small,
 	// boring list: every word here is one people write without thinking about it,
@@ -1148,7 +1163,7 @@ func endsInAbbreviation(before string) bool {
 
 // splitAtReason cuts a one-sentence note at the word that admitted it.
 //
-// A NOTE or TODO is only harvested when it says WHY, and people write that
+// A reason-bearing note is only harvested when it says WHY, and people write that
 // inline at least as often as in a second sentence: "change to 0 here to avoid
 // pointer mangling" carries both halves in one breath. firstSentence finds no
 // boundary in that and puts everything in the decision — so the note is admitted
