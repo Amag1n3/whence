@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 /* The command surface, taken from `usage()` in main.go. Same standing rule as
    Terminal and DriftDemo: this is a transcription of what the binary does, so
    it becomes a lie the moment main.go changes without it. Eleven commands as
-   of v0.2.0 — if `whence --help` lists one that is not here, here is wrong.
+   of v0.3.0 — if `whence --help` lists one that is not here, here is wrong.
 
    Do not write the count into page copy. It said "ten" in three places while
    this list held eleven, and the only reason /docs was right is that its
@@ -87,8 +87,6 @@ whence src/auth/session.go`,
             <code className="font-mono text-silt">GOTCHA:</code> and{' '}
             <code className="font-mono text-silt">ponytail:</code> always;{' '}
             <code className="font-mono text-silt">NOTE:</code>,{' '}
-            <code className="font-mono text-silt">TODO:</code>,{' '}
-            <code className="font-mono text-silt">FIXME:</code>,{' '}
             <code className="font-mono text-silt">WARNING:</code> and{' '}
             <code className="font-mono text-silt">CAVEAT:</code> only where the note gives
             a reason. The usual first command after installing, because a store with no
@@ -173,11 +171,12 @@ whence src/auth/session.go`,
         example: `whence check -base origin/main`,
       },
       {
-        sig: 'whence capture [file]',
+        sig: 'whence capture <session.jsonl>',
         what: 'Read a finished Claude Code session and show each edit beside what was said before it.',
         note: (
           <>
-            Reads the newest session for this directory by default.{' '}
+            Reads the explicitly named finished session. There is no default: guessing
+            the newest file can select the live session.{' '}
             <b className="text-silt">Writes nothing.</b> Whether a stated reason is the
             real one is the open question this project has not answered, so a human reads
             these and decides rather than the tool recording them automatically.

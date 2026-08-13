@@ -79,7 +79,9 @@ func checkCmd(args []string) {
 	// base → working tree, rather than base...HEAD. In CI the tree is clean so
 	// they are the same thing, and locally this also catches what you have not
 	// committed yet, which is when it is most useful.
-	diff, err := git("-C", root, "diff", "--unified=0", "--no-color", *base)
+	// Keep renames as a delete plus an add. A decision that moved to another
+	// file is a new record, so the old anchor must be checked as lost.
+	diff, err := git("-C", root, "diff", "--unified=0", "--no-color", "--no-renames", *base)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "whence: cannot diff against %s (fetch it first?)\n", *base)
 		os.Exit(2)
@@ -348,13 +350,27 @@ func spans(ss []lineSpan) string {
 // that removing the code a record covers still registers.
 func changedRanges(diff string) map[string][]lineSpan {
 	out := map[string][]lineSpan{}
-	file := ""
+	file, oldFile := "", ""
 	for _, line := range strings.Split(diff, "\n") {
 		switch {
+		case strings.HasPrefix(line, "--- "):
+			p := strings.TrimPrefix(line, "--- ")
+			oldFile = ""
+			if p != "/dev/null" {
+				oldFile = strings.TrimPrefix(p, "a/")
+			}
+
 		case strings.HasPrefix(line, "+++ "):
 			p := strings.TrimPrefix(line, "+++ ")
 			if p == "/dev/null" { // the file was deleted
-				file = ""
+				file = oldFile
+				if file != "" {
+					// A whole-file deletion may have no usable new-side range,
+					// but it still needs to enter the inspection loop.
+					if _, ok := out[file]; !ok {
+						out[file] = nil
+					}
+				}
 				continue
 			}
 			file = strings.TrimPrefix(p, "b/")

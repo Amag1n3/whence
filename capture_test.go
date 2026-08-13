@@ -61,6 +61,17 @@ func TestReadTrailPairsAnEditWithWhatWasSaidBeforeIt(t *testing.T) {
 	}
 }
 
+func TestCaptureRequiresAnExplicitSession(t *testing.T) {
+	for _, args := range [][]string{nil, {}, {"one.jsonl", "two.jsonl"}} {
+		if _, err := capturePath(args); err == nil {
+			t.Fatalf("capture args %v must be rejected without exactly one session", args)
+		}
+	}
+	if got, err := capturePath([]string{"session.jsonl"}); err != nil || got != "session.jsonl" {
+		t.Fatalf("explicit session path = %q, %v", got, err)
+	}
+}
+
 // The footer is the command's whole output, and its first version reported
 // "stated reasoning" for every edit in three real sessions because it counted
 // any non-empty string. These are verbatim from those runs: the announcements

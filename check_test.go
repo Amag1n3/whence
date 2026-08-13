@@ -43,6 +43,7 @@ diff --git a/single.go b/single.go
 			{41, 42}, // +41,2
 			{72, 72}, // +72,0 — a pure deletion, flagged at the line it happened
 		},
+		"gone.go":   {{0, 0}}, // whole-file deletion: inspect the old path
 		"single.go": {{9, 9}}, // "+9" with no count means one line
 	}
 	if len(got) != len(want) {
@@ -58,9 +59,10 @@ diff --git a/single.go b/single.go
 			}
 		}
 	}
-	// A deleted file has no new side, so nothing can be anchored in it.
-	if _, ok := got["gone.go"]; ok {
-		t.Error("a file deleted in the diff should not appear")
+	// A deleted file has no new-side lines, but its old path must still be
+	// inspected so a record or evidence it contained can be reported as lost.
+	if _, ok := got["gone.go"]; !ok {
+		t.Error("a file deleted in the diff must still appear")
 	}
 }
 

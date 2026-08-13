@@ -7,7 +7,7 @@
 ---
 
 > [!NOTE]
-> **Status: surfacing and anchoring work. Capture does not.**
+> **Status: surfacing, anchoring, the CI gate and read-only capture work. Capture that writes records does not.**
 >
 > Real and tested: `whence <file>:<line>`, the `PreToolUse` hook, content-hash
 > anchoring with drifted / weak / orphaned states, evidence pointers that anchor
@@ -18,10 +18,13 @@
 > `NOTE:` / `WARNING:` / `CAVEAT:` notes that give a reason — so a store is non-empty without
 > anyone retyping anything.
 >
-> **Capture is not built.** Records are authored deliberately, because signal
-> extraction is the hard problem and curated records are the spec for solving it.
+> **Read-only capture is built.** `whence capture <session.jsonl>` reads a finished
+> Claude Code transcript and proposes edit/reason pairs; it writes nothing.
+> Capture that writes records is not built. Records are authored deliberately,
+> because signal extraction is the hard problem and curated records are the spec
+> for solving it.
 >
-> Anything below describing capture, AST-path anchoring or record signing is
+> Anything below describing automatic capture, AST-path anchoring or record signing is
 > intended behaviour, not shipped behaviour.
 >
 > Started 2026-07-31.
@@ -141,7 +144,7 @@ switch the gate off.
 $ go install github.com/Amag1n3/whence@latest
 ```
 
-Go 1.22+. `@latest` resolves to the newest tag — v0.2.0 at time of writing.
+Go 1.22+. `@latest` resolves to the newest tag — v0.3.0 at time of writing.
 
 Building from source works the same way and is the better option if you intend
 to edit the code:
@@ -269,10 +272,10 @@ Commit `.whence/records.jsonl`. That is the point — records travel with the re
 ### Gate CI on it
 
 ```yaml
-- uses: actions/checkout@v4
+- uses: actions/checkout@v5
   with:
     fetch-depth: 0   # check reads the BASE revision of the store and of cited files
-- uses: actions/setup-go@v5
+- uses: actions/setup-go@v6
   with: { go-version: '1.22' }
 - run: go build -o whence . && ./whence check -base origin/${{ github.base_ref }}
 ```
@@ -286,11 +289,13 @@ which is this repo gating on itself.
 
 ## How it works
 
-1. **Capture.** Subscribes to your agent's hooks (`PostToolUse`, `Stop`, …) and
-   records the decision trail as the session runs. Redaction happens here, before
-   anything is written.
-2. **Anchor.** Binds each record to a file, a line range, a content hash and a
-   tree-sitter AST path — so it survives reformatting, drift and most refactors.
+1. **Capture (read-only today).** `whence capture <session.jsonl>` reads the
+   transcript Claude Code already keeps and shows each edit beside what was said
+   before it. It writes nothing; automatic extraction and redaction remain future
+   work.
+2. **Anchor.** Binds each record to a file, a line range and a per-line content
+   hash — so it survives reformatting, drift and most refactors. AST paths remain
+   an intentional future extension.
 3. **Surface.** `whence <file>:<line>` from the terminal, the same records injected
    into a coding agent's context before it edits, and `whence check` as a CI gate.
 
@@ -431,7 +436,7 @@ sees that failure.
 | Phase | Scope |
 |---|---|
 | **0** | ✅ Claude Code `PreToolUse` hook → records → `whence <file>:<line>` and `whence log`. |
-| **1** | ✅ Content-hash anchoring, confidence decay, orphan surfacing, evidence pointers, `whence add`, `whence rm`, and backfill from decision comments. Still open: backfill from git history and ADR/review docs, AST paths, capture, record signing. |
+| **1** | ✅ Content-hash anchoring, confidence decay, orphan surfacing, evidence pointers, `whence add`, `whence rm`, and backfill from decision comments. Still open: backfill from git history and ADR/review docs, AST paths, capture that writes records, and record signing. |
 | **2** | ✅ `whence check` as a CI gate, comparing a diff against records. |
 | **3** | End-to-end encrypted team sync + dashboard: AI-authorship attribution, per-commit cost, violation history. |
 
@@ -445,7 +450,7 @@ default. Design commitments, not afterthoughts:
 
 - **Hashes, paths and ranges — never file contents** by default. Content capture
   is opt-in per repo.
-- **Redaction at capture, not at write.** The store is committed, so a bad
+- **Redaction before any automatic write.** The store is committed, so a bad
   capture is public the moment you push — and once a secret reaches a
   content-addressed store it may already be replicated.
 - **The store is committed on purpose.** Records travel with the repo; a fresh
@@ -459,8 +464,9 @@ default. Design commitments, not afterthoughts:
 - **Records are data, never directives.** Feeding records into agent context
   makes the store a prompt-injection target, and records arrive by `git pull` —
   anyone able to land a commit could otherwise inject authoritative-looking
-  "project history" the agent obeys. Records are signed per author; unsigned or
-  external records are marked untrusted at the point of display.
+  "project history" the agent obeys. Records are not signed yet; signing is
+  future work. The human/agent author field and `UNCHECKED` state provide the
+  current provenance signal.
 - **Attribution is aggregate-only by default.** No per-developer AI-authorship
   leaderboards. This is a developer tool, not a surveillance tool, and it will
   not become one.
@@ -470,7 +476,7 @@ default. Design commitments, not afterthoughts:
 If an agent's stated reasoning is post-hoc rationalisation rather than actual
 cause, `whence` preserves confident nonsense — durably. There's no mitigation for
 this yet, and it's the most serious doubt about the premise. It gets tested on
-real captured sessions before Phase 1 work begins.
+real captured sessions before capture is allowed to write records.
 
 **Falsification criterion:** count the times an agent proposed a change that
 contradicted a recorded decision and `whence` caught it. If that's zero after

@@ -6,8 +6,8 @@ import type { ReactNode } from 'react'
  * the page file should read as a page. This one is long enough to bury the
  * layout if it sat inline.
  *
- * Every answer here has to be true of the code as it stands. Capture, AST-path
- * anchoring and record signing are NOT built, and the questions about them say
+ * Every answer here has to be true of the code as it stands. Capture that writes
+ * records, AST-path anchoring and record signing are NOT built, and the questions about them say
  * so in the present tense rather than describing them as nearly-here. This file
  * is the easiest place in the project to accidentally promise something that
  * does not exist — the README carries the same warning about itself. */
@@ -513,7 +513,7 @@ export const FAQ: Cluster[] = [
         q: 'Will it commit a secret my agent saw?',
         a: (
           <>
-            The only automatic capture today is <C>backfill</C>, and it no longer writes
+            The only built harvesting path today is <C>backfill</C>, and it no longer writes
             on sight: it runs as a dry run that shows you what it found, and only stores
             on an explicit <C>--yes</C>. On top of that, any text that matches a
             credential shape — an API key, a token, a private key header — is refused
@@ -551,8 +551,8 @@ export const FAQ: Cluster[] = [
         q: 'Are records signed?',
         a: (
           <>
-            No. Signing lands with capture, because it only matters once records stop being
-            written by a human. It is also worth being clear about what it would buy:
+            No. Signing is future work. It would only matter once records stop being written
+            by a human, and it is worth being clear about what it would buy:
             signatures prove who wrote a record, never whether it is true, so they answer
             the deliberate-forgery threat and do nothing about the sincere-mistake one.
           </>
@@ -617,10 +617,8 @@ export const FAQ: Cluster[] = [
           <>
             Yes. Anchoring hashes lines, not syntax, so it is language-agnostic by
             construction. Backfill recognises comments by prefix, covering <C>//</C>,{' '}
-            <C>#</C> and block-comment continuations — a run across a large open-source
-            repository harvested records from TypeScript files as well as Go. A language
-            that comments some other way is not harvested, which is silent but absent rather
-            than silently wrong.
+            <C>#</C> and block-comment continuations. A language that comments some other
+            way is not harvested, which is silent but absent rather than silently wrong.
           </>
         ),
       },
@@ -643,7 +641,7 @@ export const FAQ: Cluster[] = [
             Start with <C>backfill</C>, which harvests decisions already sitting in your
             code. <C>HACK</C>, <C>WORKAROUND</C>, <C>XXX</C> and <C>GOTCHA</C> are taken
             always, because the word is itself the admission that a choice was made against
-            a constraint. <C>NOTE</C>, <C>TODO</C>, <C>FIXME</C>, <C>WARNING</C> and{' '}
+            a constraint. <C>NOTE</C>, <C>WARNING</C> and{' '}
             <C>CAVEAT</C> are taken only when the note gives a reason, which is the whole
             difference between a store worth reading and one full of &ldquo;fix this
             later&rdquo;. A decision says why; a task only says what.
@@ -790,7 +788,7 @@ export const FAQ: Cluster[] = [
           <>
             Nearest is reading enough captured sessions to answer the faithfulness question
             the writing half is blocked on. Beyond that:
-            harvesting from more sources than comments, record signing alongside capture,
+            harvesting from more sources than comments, record signing alongside capture that writes,
             and eventually team sync with a dashboard. AST paths and anything in the last
             group wait for a real repository to demand them — several features on this page
             were killed by measuring them first.

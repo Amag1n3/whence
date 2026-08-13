@@ -4,11 +4,11 @@
 // The binary is `whence`, the same as the project, the repo and the domain. One
 // name is worth a setup step: zsh and ksh have a `whence` builtin that shadows
 // anything on $PATH, so those two shells need `alias whence='command whence'`.
-// A `why` symlink ships alongside for anyone who would rather not shadow a
-// builtin they use. Every other shell needs nothing.
+// Anyone who would rather not shadow a builtin can make their own symlink under
+// another name. Every other shell needs nothing.
 //
-// Phase 0: records are written by hand. See "01 - Phase 0 Plan" in the vault
-// for whence surfacing is built before capture.
+// Phase 0: records are written by hand. `capture` reads session transcripts but
+// does not write records; the writing half remains deliberately unbuilt.
 package main
 
 import (
@@ -105,18 +105,18 @@ func usage() {
                             record currently points is a guess, not an answer.
   whence check [-base rev]  report the decisions covering a diff. Exit 1 only for
                             the ones it damaged: eroded, orphaned, evidence gone.
-  whence capture [file]     read a finished Claude Code session and show each edit
-                            beside what was said before it. Reads the newest
-                            session for this directory by default. Writes nothing:
-                            whether a stated reason is the real one is the open
-                            question, so a human reads these and decides.
+  whence capture <session.jsonl>
+                           read a finished Claude Code session and show each edit
+                           beside what was said before it. Writes nothing:
+                           whether a stated reason is the real one is the open
+                           question, so a human reads these and decides.
   whence hook pre           (called by Claude Code; reads a hook payload on stdin)
 
 Records live in .whence/records.jsonl, found by walking up from the file.
 
 zsh and ksh have a "whence" builtin that shadows this one. Add
   alias whence='command whence'
-to your shell rc, or use the "why" symlink installed alongside it.
+to your shell rc, or make your own symlink under another name.
 `)
 }
 

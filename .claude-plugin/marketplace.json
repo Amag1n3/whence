@@ -12,7 +12,7 @@
     {
       "name": "whence",
       "description": "Injects recorded decisions about a file into your agent's context before it edits, via PreToolUse. Records are historical notes, never instructions.",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "author": {
         "name": "Amogh Tyagi",
         "url": "https://github.com/Amag1n3"

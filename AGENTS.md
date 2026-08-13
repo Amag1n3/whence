@@ -39,9 +39,15 @@ directory without asking.
 - **Zero dependencies. `go.mod` is a module line and `go 1.22`, nothing
   else.** Standard library only. Do not add a require block. If you think
   something needs a dependency, stop and make the case first.
-- **The read path — `whence hook` and `whence check` — is deterministic and
-  offline.** No network calls, no API clients, no model calls, ever. It runs
-  on every edit via a `PreToolUse` hook and must fail open and stay fast.
+- **The read path — lookup, `whence hook`, and `whence check` — is deterministic
+  and offline.** It makes no network or model calls, and the whence binary is
+  never an API client. Write-side extraction remains an explicit open decision;
+  the hook runs on every edit and must fail open and stay fast.
+- **Amogh's explicit instruction controls cleanup.** He may ask to clean an
+  artifact or to leave it alone; whatever he says goes. During an explicit
+  cleanup run, flagging ignored artifacts is fine, but a rejection is final:
+  stop, do not retry or bypass it, and leave the harmless local artifacts where
+  they are.
 - **`web/` is pnpm only.** Never npm, never yarn — there's a
   `pnpm-lock.yaml` and only that.
 - Site copy is written from the code, not from `README.md`. The README
