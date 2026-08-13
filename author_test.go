@@ -427,6 +427,50 @@ func TestRegroundRepointsEvidenceWithoutRetracting(t *testing.T) {
 	}
 }
 
+// A record's File comes from a pulled store, so a path escaping the repo root
+// must never be read — the intact/orphaned verdict would be a one-bit hash
+// oracle on any file on the machine. reground resolves the record for display,
+// which makes it the probe: the outside file is placed exactly where the crafted
+// path points, so if the guard is ever removed the record reads exact again.
+func TestRegroundNeverReadsARecordFileOutsideTheRoot(t *testing.T) {
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "repo")
+	site := filepath.Join(dir, "site")
+	for _, d := range []string{repo, site} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	chdir(t, repo)
+	writeFile(t, repo, "session.go", block)
+	if _, _, err := add("session.go", 2, 4, "namespace session keys",
+		"the dashboard reads them", "manual", authorHuman, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// The oracle: a file outside the repo whose contents exactly match the
+	// record's anchor, at the exact path the crafted record names.
+	writeFile(t, site, "oracle.go", block)
+	store := filepath.Join(repo, storeDirName, recordsFileName)
+	rs, err := Load(store)
+	if err != nil || len(rs) != 1 {
+		t.Fatalf("expected one record, got %d (%v)", len(rs), err)
+	}
+	rs[0].File = "../site/oracle.go"
+	if err := save(store, rs); err != nil {
+		t.Fatal(err)
+	}
+
+	got, _, err := reground(rs[0].ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Anchor.State != StateOrphaned {
+		t.Fatalf("a crafted record path must stay unread, got %q at %d-%d",
+			got.Anchor.State, got.Anchor.Start, got.Anchor.End)
+	}
+}
+
 // The same argument as reground, for the other half of a record. A block gets
 // rewritten in place, the record about it is still exactly right, and the only
 // fix used to be rm plus add — which files a live decision in the log that
@@ -587,6 +631,26 @@ func TestAgentRecordsStartUncheckedAndHumanOnesDoNot(t *testing.T) {
 	}
 	if !strings.Contains(trust(agent.Record), "UNCHECKED") {
 		t.Errorf("an agent record must be flagged, got %q", trust(agent.Record))
+	}
+}
+
+func TestSourceAgentImpliesAuthor(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	writeFile(t, dir, "session.go", block)
+	addCmd([]string{"session.go:2-4", "-d", "an agent wrote this", "-s", "agent"})
+	rs, err := Load(filepath.Join(dir, storeDirName, recordsFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rs) != 1 {
+		t.Fatalf("want 1 record, got %d", len(rs))
+	}
+	if rs[0].Author != authorAgent {
+		t.Errorf("Author=%q, want %q", rs[0].Author, authorAgent)
+	}
+	if rs[0].Verified != "" {
+		t.Errorf("must not self-verify, Verified=%q", rs[0].Verified)
 	}
 }
 
