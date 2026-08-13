@@ -56,7 +56,11 @@ func addCmd(args []string) {
 		os.Exit(2)
 	}
 
-	rec, store, err := add(file, start, end, *decision, *why, *source, author(*asAgent), evidence)
+	// -s agent and -agent read identically at the call site, but only -agent
+	// set Author. Every ROF record was written -s agent and stored as human
+	// with a self-issued Verified date, so the §17 UNCHECKED guard was off.
+	// Honour the label. Do not migrate existing records.
+	rec, store, err := add(file, start, end, *decision, *why, *source, author(*asAgent || *source == "agent"), evidence)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "whence:", err)
 		os.Exit(1)
@@ -106,7 +110,7 @@ func confirmCmd(args []string) {
 		fmt.Printf("confirmed [%s]\n", rs[i].ID)
 		print1(Resolved{
 			Record:  rs[i],
-			Anchor:  resolveAnchor(fileLines(filepath.Join(root, rs[i].File)), rs[i]),
+			Anchor:  resolveAnchor(fileLinesWithin(filepath.Join(root, rs[i].File), root), rs[i]),
 			Grounds: resolveEvidence(root, rs[i]),
 		})
 		return
@@ -174,7 +178,7 @@ func reground(id string, refs []string) (Resolved, string, error) {
 		}
 		return Resolved{
 			Record:  rs[i],
-			Anchor:  resolveAnchor(fileLines(filepath.Join(root, rs[i].File)), rs[i]),
+			Anchor:  resolveAnchor(fileLinesWithin(filepath.Join(root, rs[i].File), root), rs[i]),
 			Grounds: resolveEvidence(root, rs[i]),
 		}, store, nil
 	}
@@ -254,7 +258,7 @@ func reanchor(id, target string) (Resolved, string, error) {
 		}
 
 		abs := filepath.Join(root, rs[i].File)
-		lines := fileLines(abs)
+		lines := fileLinesWithin(abs, root)
 		hashes, err := anchorSpan(lines, rs[i].File, start, end)
 		if err != nil {
 			return Resolved{}, store, err
@@ -326,7 +330,7 @@ func buildEvidence(root string, refs []string) ([]Evidence, error) {
 			continue
 		}
 
-		lines := fileLines(filepath.Join(root, f))
+		lines := fileLinesWithin(filepath.Join(root, f), root)
 		if lines == nil || start < 1 || end < start || end > len(lines) {
 			return nil, fmt.Errorf(
 				"evidence %q reads as a line range but %s has no lines %d-%d. If it is not a file, write it in a form that cannot be mistaken for one",

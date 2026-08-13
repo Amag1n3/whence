@@ -124,8 +124,12 @@ to your shell rc, or use the "why" symlink installed alongside it.
 
 type hookIn struct {
 	Cwd       string `json:"cwd"`
+	SessionID string `json:"session_id"`
 	ToolInput struct {
-		FilePath string `json:"file_path"`
+		FilePath   string `json:"file_path"`
+		OldString  string `json:"old_string"`  // Edit — the pre-image
+		NewString  string `json:"new_string"`  // Edit
+		ReplaceAll bool   `json:"replace_all"` // Edit
 	} `json:"tool_input"`
 }
 
@@ -146,14 +150,14 @@ type hookOut struct {
 func hookPre() {
 	raw, err := io.ReadAll(os.Stdin)
 	if err != nil {
-		os.Exit(0)
+		return
 	}
 	var in hookIn
 	if err := json.Unmarshal(raw, &in); err != nil {
-		os.Exit(0)
+		return
 	}
 	if in.ToolInput.FilePath == "" {
-		os.Exit(0) // not a file-touching tool; nothing to say
+		return // not a file-touching tool; nothing to say
 	}
 
 	// Hooks report absolute paths, but resolve defensively against the session
@@ -166,24 +170,144 @@ func hookPre() {
 	// Resolve the store from the FILE, not the session. See FindStore.
 	store, root, ok := FindStore(abs)
 	if !ok {
-		os.Exit(0)
+		return
 	}
 	rs, err := Load(store)
 	if err != nil || len(rs) == 0 {
-		os.Exit(0)
+		return
 	}
 	hits := Match(root, rs, Rel(root, abs), 0)
 	if len(hits) == 0 {
-		os.Exit(0)
+		return
+	}
+
+	on, off := gate(hits, in, abs, root)
+	showTail := len(off) > 0 && !tailAlreadyShown(root, in.SessionID, abs)
+	if len(on) == 0 && !showTail {
+		return
 	}
 
 	var out hookOut
 	out.HookSpecificOutput.HookEventName = "PreToolUse"
-	out.HookSpecificOutput.AdditionalContext = renderContext(hits)
-	if err := json.NewEncoder(os.Stdout).Encode(out); err != nil {
-		os.Exit(0)
+	ctx := renderContext(on)
+	if showTail {
+		ctx += formatTail(off, filepath.ToSlash(Rel(root, abs)))
 	}
-	appendSurfaced(root, abs, hits)
+	out.HookSpecificOutput.AdditionalContext = ctx
+	if err := json.NewEncoder(os.Stdout).Encode(out); err != nil {
+		return
+	}
+	if !showTail {
+		off = nil
+	}
+	appendSurfaced(root, abs, in.SessionID, on, off)
+}
+
+// gate splits hits into on-target and off-target. When the payload does not
+// name a unique edit, every hit stays on-target — today's dump — rather than
+// a guess. OldString empty is Write/NotebookEdit; locateSpan 0,0 means the
+// pre-image is no longer in the file; ReplaceAll means it occurs more than
+// once and locateSpan only found the first.
+func gate(hits []Resolved, in hookIn, abs, root string) (on, off []Resolved) {
+	if in.ToolInput.OldString == "" || in.ToolInput.ReplaceAll {
+		return hits, nil
+	}
+	start, end := locateSpan(fileLinesWithin(abs, root), in.ToolInput.OldString)
+	if start == 0 {
+		return hits, nil
+	}
+	// "\n" so the seam cannot spell an identifier present in neither string.
+	return splitOnTarget(hits, start, end, in.ToolInput.OldString+"\n"+in.ToolInput.NewString)
+}
+
+func splitOnTarget(hits []Resolved, editStart, editEnd int, hay string) (on, off []Resolved) {
+	for _, r := range hits {
+		if onTarget(r, editStart, editEnd, hay) {
+			on = append(on, r)
+		} else {
+			off = append(off, r)
+		}
+	}
+	return on, off
+}
+
+// onTarget is either span overlap (a) or a code-ish name from the record
+// appearing in the edit (b). The one surfacing that changed an agent's mind
+// was (b): ddfb67 named resolveProfileForCase and did not overlap the edit.
+func onTarget(r Resolved, editStart, editEnd int, hay string) bool {
+	return spanOverlap(r, editStart, editEnd) || nameOverlap(r.Record, hay)
+}
+
+// spanOverlap is clause (a): the record's current span intersects the edited
+// span padded by 3. A lost anchor is never gated — its recorded span is
+// where the code used to be, meaningless once the file changed enough to
+// lose it. An agent about to edit a file carrying a lost decision is
+// exactly who needs to know (same reason Match surfaces orphans on every
+// whole-file view).
+func spanOverlap(r Resolved, editStart, editEnd int) bool {
+	if r.Anchor.Start == 0 {
+		return true
+	}
+	return r.Anchor.Start <= editEnd+3 && editStart-3 <= r.Anchor.End
+}
+
+func nameOverlap(r Record, hay string) bool {
+	for _, tok := range codeTokens(r.Decision + " " + r.Why) {
+		if strings.Contains(hay, tok) {
+			return true
+		}
+	}
+	return false
+}
+
+// codeTokens pulls identifier-shaped words out of record prose. Relevance
+// here is identifier-shaped, not line-shaped: the hit that earned this gate
+// named the function being edited and did not overlap its span.
+//
+// The filter is the whole trick. Length ≥ 6 plus (an underscore or an
+// interior capital) admits how these records actually name code —
+// resolveProfileForCase, ERR_NGROK_6024 — and drops ordinary English.
+// Validated on the live corpus; widen only against a real miss.
+func codeTokens(s string) []string {
+	var out []string
+	for i := 0; i < len(s); {
+		if !identStart(s[i]) {
+			i++
+			continue
+		}
+		j := i + 1
+		for j < len(s) && identCont(s[j]) {
+			j++
+		}
+		if tok := s[i:j]; codeish(tok) {
+			out = append(out, tok)
+		}
+		i = j
+	}
+	return out
+}
+
+func identStart(c byte) bool {
+	return c == '_' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z'
+}
+
+func identCont(c byte) bool {
+	return identStart(c) || c >= '0' && c <= '9'
+}
+
+func codeish(tok string) bool {
+	if len(tok) < 6 {
+		return false
+	}
+	if strings.Contains(tok, "_") {
+		return true
+	}
+	for i := 1; i < len(tok); i++ {
+		if tok[i] >= 'A' && tok[i] <= 'Z' {
+			return true
+		}
+	}
+	return false
 }
 
 // renderContext formats records for an agent, under the 10k cap.
@@ -193,14 +317,11 @@ func hookPre() {
 // orphaned record as though it were current is being lied to. Uncertainty is
 // part of the payload, not a detail for the human view.
 //
-// ponytail: ranks live-anchors-then-newest and truncates. Real relevance ranking
-// (does this record concern the lines actually being changed?) needs a diff.
-// `whence check` now exists and has one — but this is PreToolUse, which fires
-// *before* the edit, so there is no diff here to rank against and there cannot
-// be. The trigger this note used to carry ("revisit when check exists") was the
-// wrong trigger. The right one is a hook that runs after an edit: PostToolUse
-// could rank by what actually changed, at the cost of arriving too late to stop
-// anything.
+// What to show is decided before we get here. hookPre already split on-target
+// from off-target using the Edit pre-image — old_string is in the payload,
+// locateSpan turns it into a span. An earlier note here claimed that ranking
+// "cannot" happen on PreToolUse because there is no diff. That was wrong, and
+// it is why the gate was never built.
 func renderContext(rs []Resolved) string {
 	var b strings.Builder
 	b.WriteString(contextPreamble)
@@ -223,6 +344,18 @@ func renderContext(rs []Resolved) string {
 		b.WriteString(line)
 	}
 	return b.String()
+}
+
+// formatTail collapses every off-target record into one pointer. Never drop
+// them silently — a tool that shows less than it saw is the failure this
+// project exists to complain about — but a pointer is not a dump.
+func formatTail(off []Resolved, file string) string {
+	ids := make([]string, len(off))
+	for i, r := range off {
+		ids[i] = r.ID
+	}
+	return fmt.Sprintf("- %d other record(s) on this file, none on these lines or names: %s — run: whence %s\n",
+		len(off), strings.Join(ids, ", "), file)
 }
 
 // locate renders where a record points, showing the recorded span alongside the
@@ -305,7 +438,7 @@ func ground(g Grounded) string {
 // as the DECISIONS §8 falsification metric. That number now comes from
 // `whence check`, which compares a diff against records; count the records it
 // reports and how many turned out to matter.
-func appendSurfaced(root, file string, rs []Resolved) {
+func appendSurfaced(root, file, session string, shown, tail []Resolved) {
 	f, err := os.OpenFile(filepath.Join(root, storeDirName, surfacedLogName),
 		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
@@ -313,15 +446,55 @@ func appendSurfaced(root, file string, rs []Resolved) {
 	}
 	defer f.Close()
 
-	ids := make([]string, len(rs))
-	for i, r := range rs {
-		ids[i] = r.ID
+	recIDs := make([]string, len(shown))
+	for i, r := range shown {
+		recIDs[i] = r.ID
+	}
+	tailIDs := make([]string, len(tail))
+	for i, r := range tail {
+		tailIDs[i] = r.ID
 	}
 	_ = json.NewEncoder(f).Encode(map[string]any{
 		"at":      time.Now().UTC().Format(time.RFC3339),
+		"session": session,
 		"file":    file,
-		"records": ids,
+		"records": recIDs,
+		"tail":    tailIDs,
 	})
+}
+
+// tailAlreadyShown reports whether this session has already been told about
+// the off-target records on this file. On-target records keep repeating —
+// that is the point. The tail is what taught agents to skim past the block.
+//
+// ponytail: reads the whole surfaced log per edit, one line per surfacing,
+// fine until a store gets very large; bound it by date if that ever shows
+// up in the hook's latency.
+func tailAlreadyShown(root, session, file string) bool {
+	if session == "" {
+		return false
+	}
+	b, err := os.ReadFile(filepath.Join(root, storeDirName, surfacedLogName))
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var e struct {
+			Session string `json:"session"`
+			File    string `json:"file"`
+		}
+		if json.Unmarshal([]byte(line), &e) != nil {
+			continue
+		}
+		if e.Session == session && e.File == file {
+			return true
+		}
+	}
+	return false
 }
 
 // --- the terminal -------------------------------------------------------
