@@ -39,8 +39,8 @@ const SECTIONS: DocSectionMeta[] = [
 const STEPS: [string, string, string][] = [
   [
     'Capture',
-    'not built',
-    'Record the decision trail as the session runs. Redaction happens here, before anything is written to disk.',
+    'read-only',
+    'Read a finished session transcript and propose edit/reason pairs. It writes nothing; capture that writes records remains unbuilt.',
   ],
   [
     'Anchor',
@@ -60,7 +60,7 @@ const LEDGER: [boolean, string, string][] = [
   [true, 'whence check', 'The CI gate. Fails the build only for decisions a diff damaged.'],
   [true, 'Evidence', 'A record can point at what makes it true. That pointer is anchored too, so it can rot on its own.'],
   [true, 'whence backfill', 'Harvests decisions already written in your code, so day one is not an empty store.'],
-  [false, 'Capture', 'Deciding which slice of a session is worth keeping is the actual hard part, and it is not built.'],
+  [true, 'whence capture (read-only)', 'Reads an explicitly named session and proposes edit/reason pairs without writing to the store.'],
 ]
 
 /* Three, down from five. The two that went — "hashes, paths and ranges, never
@@ -251,7 +251,7 @@ export default function WhyPage() {
             failure: if a stated reason is a story told afterwards rather than the actual
             cause, this preserves confident nonsense durably — and a store full of nonsense
             produces <em className="not-italic text-silt">more</em> catches, not fewer. That
-            is why retractions are logged, and why capture stays off until the
+            is why retractions are logged, and why capture stays read-only until the
             faithfulness of stated reasoning has been measured.
           </p>
         </div>

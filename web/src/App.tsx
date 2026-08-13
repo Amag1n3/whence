@@ -91,7 +91,7 @@ export default function App() {
                 <div className="mt-7 flex items-center gap-3.5">
                   <span className="h-px w-8 shrink-0 bg-ochre" />
                   <span className="font-mono text-[11px] leading-[1.6] tracking-[0.14em] text-dim uppercase">
-                    surfacing, anchoring and the CI gate run · capture does not
+                    surfacing, anchoring and the CI gate run · capture reads only
                   </span>
                 </div>
               </Reveal>

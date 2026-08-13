@@ -695,6 +695,36 @@ func TestRemovingARecordLeavesATrace(t *testing.T) {
 	}
 }
 
+func TestRemovingARecordKeepsItWhenRetractionLogCannotBeWritten(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	writeFile(t, dir, "session.go", block)
+
+	rec, store, err := add("session.go", 2, 4, "must stay for the dashboard", "the dashboard reads it", "manual", authorHuman, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, storeDirName, retractedLogName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	rs, err := Load(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := removeRecord(store, dir, rs, rec.ID, "the claim was wrong"); err == nil {
+		t.Fatal("removal must fail when its retraction cannot be logged")
+	}
+
+	after, err := Load(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 1 || after[0].ID != rec.ID {
+		t.Fatalf("a failed retraction must keep the record, got %+v", after)
+	}
+}
+
 // The first ". " in a note is not always a sentence break. A real note read
 // "...might belong to other services (e.g. <names>), but since they are used
 // directly..." and the cut landed inside the abbreviation, so the decision — the

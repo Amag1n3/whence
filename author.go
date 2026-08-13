@@ -625,6 +625,19 @@ func rmCmd(args []string) {
 
 	store, root, rs := openStore()
 
+	gone, err := removeRecord(store, root, rs, id, *reason)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "whence:", err)
+		os.Exit(1)
+	}
+	fmt.Printf("removed [%s] %s:%d-%d — %s\n",
+		gone.ID, gone.File, gone.Start, gone.End, gone.Decision)
+	if *reason == "" {
+		fmt.Println("no reason given. `-w \"...\"` next time — the retraction log is how you find out how often this tool is wrong.")
+	}
+}
+
+func removeRecord(store, root string, rs []Record, id, reason string) (Record, error) {
 	kept := make([]Record, 0, len(rs))
 	var gone *Record
 	for i, r := range rs {
@@ -635,39 +648,44 @@ func rmCmd(args []string) {
 		kept = append(kept, r)
 	}
 	if gone == nil {
-		fmt.Fprintf(os.Stderr, "whence: no record [%s] in %s\n", id, store)
-		os.Exit(1)
+		return Record{}, fmt.Errorf("no record [%s] in %s", id, store)
 	}
 	if err := save(store, kept); err != nil {
-		fmt.Fprintln(os.Stderr, "whence:", err)
-		os.Exit(1)
+		return Record{}, err
 	}
-	appendRetracted(root, *gone, *reason)
-	fmt.Printf("removed [%s] %s:%d-%d — %s\n",
-		gone.ID, gone.File, gone.Start, gone.End, gone.Decision)
-	if *reason == "" {
-		fmt.Println("no reason given. `-w \"...\"` next time — the retraction log is how you find out how often this tool is wrong.")
+	if err := appendRetracted(root, *gone, reason); err != nil {
+		if restoreErr := save(store, rs); restoreErr != nil {
+			return Record{}, fmt.Errorf("could not write the retraction log (%v), and could not restore the record: %w", err, restoreErr)
+		}
+		return Record{}, fmt.Errorf("could not write the retraction log; record was kept: %w", err)
 	}
+	return *gone, nil
 }
 
 // appendRetracted logs a removal. Committed, unlike the surfacing log, because
 // this one is evidence about the store's own accuracy and is worthless if it only
 // exists on the machine that happened to do the deleting.
-func appendRetracted(root string, r Record, reason string) {
+func appendRetracted(root string, r Record, reason string) error {
 	f, err := os.OpenFile(filepath.Join(root, storeDirName, retractedLogName),
 		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
-		return // never fail a removal over bookkeeping
+		return err
 	}
-	defer f.Close()
-	_ = json.NewEncoder(f).Encode(map[string]any{
+	if err := json.NewEncoder(f).Encode(map[string]any{
 		"at":       time.Now().Format("2006-01-02"),
 		"id":       r.ID,
 		"file":     r.File,
 		"decision": r.Decision,
 		"author":   r.Author,
 		"reason":   reason,
-	})
+	}); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // --- backfill -----------------------------------------------------------

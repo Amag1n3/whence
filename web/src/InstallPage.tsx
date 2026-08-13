@@ -184,10 +184,10 @@ mv whence ~/.local/bin/                        # anywhere on $PATH`}</Code>
         <Code>{`whence backfill`}</Code>
         <P>
           That reads <M>HACK:</M>, <M>WORKAROUND:</M>, <M>XXX:</M>, <M>GOTCHA:</M> and{' '}
-          <M>ponytail:</M> comments always, and <M>NOTE:</M>, <M>TODO:</M>, <M>FIXME:</M>
-          , <M>WARNING:</M>, <M>CAVEAT:</M> only where the note gives a reason. Read what
-          it found and delete anything you disagree with — the store is committed and
-          shared, so a bad record costs more than a missing one.
+          <M>ponytail:</M> comments always, and <M>NOTE:</M>, <M>WARNING:</M>,{' '}
+          <M>CAVEAT:</M> only where the note gives a reason. It is a dry run by default:
+          read what it found, then rerun <M>whence backfill --yes</M> to write. The store is
+          committed and shared, so a bad record costs more than a missing one.
         </P>
         <P>
           Records live in <M>.whence/records.jsonl</M>, found by walking up from the
@@ -226,10 +226,10 @@ mv whence ~/.local/bin/                        # anywhere on $PATH`}</Code>
   if: github.event_name == 'pull_request'
   runs-on: ubuntu-latest
   steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0
-    - uses: actions/setup-go@v5
+    - uses: actions/setup-go@v6
       with:
         go-version: '1.22'
     - run: go install github.com/Amag1n3/whence@latest
@@ -251,7 +251,7 @@ mv whence ~/.local/bin/                        # anywhere on $PATH`}</Code>
 
       <div className="border-t border-white/[0.07] pt-7">
         <P>
-          Installed and running? <A href="/docs">The command reference</A> covers all ten
+          Installed and running? <A href="/docs">The command reference</A> covers all eleven
           commands, the record format, and what anchoring does when the code moves.
           Anything unclear or wrong here is <A href={REPO}>an issue worth opening</A> —
           an install someone cannot complete is a gap in the argument, not a support

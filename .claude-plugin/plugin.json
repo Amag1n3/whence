@@ -1,6 +1,6 @@
 {
   "name": "whence",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Surfaces the recorded reason a piece of code is the way it is, to your agent, before it edits that code.",
   "author": {
     "name": "Amogh Tyagi",

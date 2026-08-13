@@ -40,7 +40,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 )
 
@@ -81,17 +80,10 @@ type moment struct {
 }
 
 func captureCmd(args []string) {
-	path := ""
-	if len(args) > 0 {
-		path = args[0]
-	}
-	if path == "" {
-		p, err := newestTranscript()
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "whence:", err)
-			os.Exit(1)
-		}
-		path = p
+	path, err := capturePath(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "whence:", err)
+		os.Exit(2)
 	}
 
 	all, err := readTrail(path)
@@ -167,6 +159,13 @@ func captureCmd(args []string) {
 	fmt.Println("nothing was written; capture proposes, it does not record")
 }
 
+func capturePath(args []string) (string, error) {
+	if len(args) != 1 || strings.TrimSpace(args[0]) == "" {
+		return "", fmt.Errorf("usage: whence capture <session.jsonl>")
+	}
+	return args[0], nil
+}
+
 // hereOnly splits edits into those belonging to the store capture is reporting
 // for and those belonging somewhere else.
 //
@@ -214,50 +213,6 @@ func reportElsewhere(n int) {
 	if n > 0 {
 		fmt.Printf("%d edit(s) in other repos, not shown\n", n)
 	}
-}
-
-// newestTranscript finds the most recent session for the current directory.
-//
-// Claude Code names a project directory after the absolute path with every
-// separator replaced by a dash. Resolving from cwd is correct HERE and nowhere
-// else in this tool: a transcript belongs to a session, and a session is rooted
-// at a directory. Records belong to files, which is why FindStore walks up from
-// a file instead — see DECISIONS §12.
-func newestTranscript() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Join(home, ".claude", "projects", strings.ReplaceAll(cwd, string(filepath.Separator), "-"))
-
-	des, err := os.ReadDir(dir)
-	if err != nil {
-		return "", fmt.Errorf("no sessions recorded for %s", cwd)
-	}
-	type cand struct {
-		path string
-		mod  int64
-	}
-	var cs []cand
-	for _, d := range des {
-		if d.IsDir() || filepath.Ext(d.Name()) != ".jsonl" {
-			continue
-		}
-		info, err := d.Info()
-		if err != nil {
-			continue
-		}
-		cs = append(cs, cand{filepath.Join(dir, d.Name()), info.ModTime().UnixNano()})
-	}
-	if len(cs) == 0 {
-		return "", fmt.Errorf("no sessions recorded for %s", cwd)
-	}
-	sort.Slice(cs, func(i, j int) bool { return cs[i].mod > cs[j].mod })
-	return cs[0].path, nil
 }
 
 // readTrail walks a transcript and returns every edit with the reasoning that
