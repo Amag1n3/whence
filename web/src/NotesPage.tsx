@@ -13,6 +13,7 @@ const SECTIONS: DocSectionMeta[] = [
   { id: 'unexpected', label: 'The part I did not expect' },
   { id: 'quality', label: 'When it fires, is it any good?' },
   { id: 'rule', label: 'One unspecified rule' },
+  { id: 'human', label: 'So I read ten myself' },
   { id: 'absence', label: 'What did not happen' },
   { id: 'caveats', label: 'Caveats' },
   { id: 'conclusion', label: 'The conclusion' },
@@ -29,7 +30,7 @@ const B = ({ children }: { children: ReactNode }) => (
 /** Columns stay columns. A stacked-card table would break the comparison
  *  the numbers exist to make. On a phone the row scrolls; the first column
  *  stays put so the label still names the figures beside it. */
-function Table({ cols, rows }: { cols: string[]; rows: ReactNode[][] }) {
+function Table({ cols, rows }: { cols: ReactNode[]; rows: ReactNode[][] }) {
   return (
     <div className="term-scroll max-w-full overflow-x-auto">
       <table className="w-max min-w-full border-collapse font-mono text-[12.5px] leading-[1.65]">
@@ -37,7 +38,7 @@ function Table({ cols, rows }: { cols: string[]; rows: ReactNode[][] }) {
           <tr className="border-b border-white/[0.07] text-dim">
             {cols.map((c, i) => (
               <th
-                key={c}
+                key={i}
                 scope="col"
                 className={cn(
                   'py-2 pr-5 font-normal whitespace-nowrap',
@@ -170,11 +171,12 @@ export default function NotesPage() {
 
       <DocSection id="quality" n={4} title="Then the actual question: when it fires, is the record any good?">
         <P>
-          51 records survived the gates. I dumped each one as it would actually
-          be stored — the decision line, the why, the prose it came from, and
-          the exact text the edit wrote — and judged all 51 by hand. Then I
-          gave the same 51, and an identical prompt carrying none of my
-          verdicts, to two other frontier models.
+          81 records survived the gates across the four corpora; I graded 51 of
+          them. I dumped each one as it would actually be stored — the
+          decision line, the why, the prose it came from, and
+          the exact text the edit wrote — and had three frontier models judge
+          them independently, each working from an identical prompt that
+          carried no verdicts from the others.
         </P>
         <Table
           cols={['grader', 'good', 'wrong', 'narration', 'rate']}
@@ -221,7 +223,86 @@ export default function NotesPage() {
         </P>
       </DocSection>
 
-      <DocSection id="absence" n={6} title="What did not happen is the interesting part">
+      <DocSection id="human" n={6} title="So I read ten of them myself">
+        <P>
+          Ten records, picked to be maximally informative: eight the models
+          disagreed on, plus the two they were unanimous about as calibration
+          anchors. Verdicts hidden until after I'd marked mine.
+        </P>
+        <Table
+          cols={['entry', <B>me</B>, 'Claude', 'Grok', 'Kimi']}
+          rows={[
+            ['019', <B>good</B>, 'good', 'good', 'good'],
+            ['010', <B>good</B>, 'wrong', 'wrong', 'good'],
+            ['013', <B>narration</B>, 'wrong', 'wrong', 'good'],
+            ['014', <B>wrong</B>, 'wrong', 'narration', 'good'],
+            ['021', <B>wrong</B>, 'wrong', 'good', 'good'],
+            ['023', <B>wrong</B>, 'wrong', 'good', 'good'],
+            ['027', <B>good</B>, 'wrong', 'wrong', 'wrong'],
+            ['030', <B>can't tell</B>, 'wrong', 'wrong', 'good'],
+            ['036', <em>couldn't judge</em>, 'narration', 'good', 'good'],
+            ['048', <em>couldn't judge</em>, 'wrong', 'wrong', 'good'],
+          ]}
+        />
+        <P>
+          Three of the ten I did not return a verdict on at all — 030 I marked
+          "can't tell", 036 and 048 I left blank. So the comparison below runs
+          over the <B>seven</B> I could actually call.
+        </P>
+        <P>
+          <B>Agreement on direction, over those seven</B> — good versus
+          not-good, collapsing <M>narration</M> into not-good: Claude 5/7, Grok
+          3/7, Kimi 2/7. The human lands nearest the strictest grader and
+          furthest from the most permissive one, which points the real rate at
+          65–75% rather than 92%. Seven entries is a small n and I am not
+          claiming more than a direction.
+        </P>
+        <P>
+          On exact verdict match instead it is 4/7, 1/7, 2/7, and Grok rather
+          than Kimi is furthest from me. I had to choose that rule to state
+          these numbers at all, and the choice moves them — which is the
+          section above happening again, in my own arithmetic.
+        </P>
+        <P>Four things came out of it that the models could not have produced.</P>
+        <P>
+          <B>I inverted one of the anchors.</B> All three graders called 027 a
+          failure; I called it good. The reason is disqualifying rather than
+          reassuring: I was in that session. The record reads{' '}
+          <em>"All four done. Scrollbar — the tab strip used the platform
+          default"</em>{' '}
+          and I remember which four. Someone finding those lines in two years
+          has none of that. My verdict is evidence the record works for a
+          reader who was present — precisely the reader this tool is not built
+          for.
+        </P>
+        <P>
+          <B>I used a criterion none of the three thought to apply.</B> On 023
+          the record cites a zip of design exports to justify a change.
+          Attribution is fine. But the zip will not exist later, so the record
+          rots into an assertion with a dead reference. All three models asked{' '}
+          <em>does this reason explain this edit</em>. None asked{' '}
+          <em>will this still mean anything once what it points at is gone</em>{' '}
+          — which, for a tool whose whole pitch is records that outlive the
+          session, is arguably the more important question. It is not in the
+          gates at all.
+        </P>
+        <P>
+          <B>I never stated the rule.</B> The prompt asked every grader to fix
+          its position on the thin-decision ambiguity up front and apply it
+          consistently; all three did, and their choices explain most of the
+          spread. I left the field blank and answered by feel — "feels real",
+          "feels wrong". The distinction all three models resolved explicitly
+          is not one a human appears to make at all.
+        </P>
+        <P>
+          <B>And I could not judge three of the ten.</B> Not "found them
+          borderline" — could not evaluate them from what the record shows, on
+          my own repo and my employer's code, with full context. That is the
+          uncomfortable one, and it is the next section.
+        </P>
+      </DocSection>
+
+      <DocSection id="absence" n={7} title="What did not happen is the interesting part">
         <P>
           Across 51 records,{' '}
           <B>not one case of an agent stating a false reason for what it did.</B>{' '}
@@ -241,7 +322,7 @@ export default function NotesPage() {
         </P>
       </DocSection>
 
-      <DocSection id="caveats" n={7} title="Caveats, because they bound everything above">
+      <DocSection id="caveats" n={8} title="Caveats, because they bound everything above">
         <ul className="max-w-[56ch] list-disc space-y-3 pl-5 text-[14.5px] leading-[1.68] text-muted-foreground">
           <li>
             This measures <B>attribution</B> — does the record explain this
@@ -249,9 +330,11 @@ export default function NotesPage() {
             wrong about the world. Nobody has measured that.
           </li>
           <li>
-            The corpus is <B>enriched</B>: 51 of 2,672 edits, 1.9%, selected by
-            a filter that fires on the agent's most diagnosis-heavy moments.
-            This measures records at their best.
+            The corpus is <B>enriched</B>: 81 of 2,672 edits, 3.0%, passed both
+            gates, selected by a filter that fires on the agent's most
+            diagnosis-heavy moments, and the 51 I graded are drawn from those
+            81. Which 51, and why not the other 30, I did not record. This
+            measures records at their best.
           </li>
           <li>All of it is one engineer's sessions with one coding agent.</li>
           <li>
@@ -261,14 +344,16 @@ export default function NotesPage() {
             three graders raised this independently.
           </li>
           <li>
-            <B>A human tiebreak is pending.</B> I am reading a ten-record
-            subset by hand, including both unanimous anchors. This page gets
-            updated with that result, whether or not it agrees with me.
+            The human tiebreak is <B>seven judged entries</B>, which is enough
+            for a direction and not enough for a number. It also went through
+            one round of correction: the first version of this page counted an
+            abstention as agreement and reported 6/8·4/8·2/8. One of the
+            graders caught it.
           </li>
         </ul>
       </DocSection>
 
-      <DocSection id="conclusion" n={8} title="The conclusion I actually drew">
+      <DocSection id="conclusion" n={9} title="The conclusion I actually drew">
         <P>
           The number my own falsification condition demanded does not exist at
           useful precision, and the disagreement is definitional rather than
@@ -284,6 +369,20 @@ export default function NotesPage() {
         <P>
           That was designed as a safety net. The measurement says it is the
           actual mechanism.
+        </P>
+        <P>
+          Which is where the last result bites.{' '}
+          <B>I could not judge three of the ten records I read</B> — on my own
+          repository, in code I had written or supervised, with the full prose
+          and the exact diff in front of me. If the safeguard against a bad
+          record is a human approving it, and the human cannot evaluate roughly
+          a third of the queue, then for that third the safeguard is not a
+          filter. It is a coin flip, or an entry that sits unreviewed forever.
+        </P>
+        <P>
+          I do not have an answer to that yet. It is a better problem than the
+          one I set out to measure, and I would rather publish it than round it
+          off.
         </P>
         <P>
           whence is Go, zero dependencies, and its records are JSONL committed
