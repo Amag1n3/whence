@@ -31,8 +31,16 @@
 #
 # stdout still flows straight through to Claude Code, which is what carries the
 # injected context.
+# Which half of the hook this is: `pre` surfaces records before an edit, `post`
+# records the reason after one. hooks.json passes it.
+MODE=$1
+
+# run executes a candidate and ALWAYS exits 0, whatever the binary did.
+#
+# $1 inside the function is the binary; MODE came from the script's own arguments
+# above, before any function was called.
 run() {
-	"$1" hook pre
+	"$1" hook "$MODE"
 	exit 0
 }
 

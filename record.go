@@ -22,6 +22,7 @@ const (
 	attributesName   = ".gitattributes"
 	surfacedLogName  = "surfaced.jsonl"
 	retractedLogName = "retracted.jsonl"
+	pendingLogName   = "pending.jsonl"
 )
 
 // Record is one decision, anchored to a span of one file.

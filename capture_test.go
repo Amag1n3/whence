@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -207,5 +209,353 @@ func TestLocateSpanRefusesToGuess(t *testing.T) {
 	}
 	if start, _ := locateSpan(lines, ""); start != 0 {
 		t.Errorf("start = %d, want 0 for empty text", start)
+	}
+}
+
+// lastSaid is read backwards from the end of a live transcript, which is the one
+// place a mistake is invisible: pick the wrong entry and the record still gets
+// written, just attributing the wrong reason to the edit.
+func TestLastSaidTakesTheNearestProseNotTheFirst(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "live.jsonl")
+	if err := os.WriteFile(path, []byte(trail), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// trail ends with a Bash tool_use, so the nearest prose is the backoff line
+	// two assistant turns earlier — not the thinking block between them, which
+	// persists with empty text, and not the user turn.
+	if got := lastSaid(path); got[:14] != "Keeping the ba" {
+		t.Errorf("lastSaid = %q, want the assistant prose nearest the end", got)
+	}
+
+	// A transcript with no assistant prose at all states no reason. Empty, not a
+	// fallback to the user's request — the user asking for something is not the
+	// agent explaining it.
+	quiet := filepath.Join(t.TempDir(), "quiet.jsonl")
+	if err := os.WriteFile(quiet, []byte(`{"type":"user","message":{"role":"user","content":"do the thing"}}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := lastSaid(quiet); got != "" {
+		t.Errorf("lastSaid = %q, want empty when nothing was said", got)
+	}
+}
+
+// The tail window starts mid-entry on any real session, so the first line in it
+// is a fragment. Parsing that fragment is harmless, but keeping it in the scan
+// while the window is 1MB into a file is how an off-by-one here would hide.
+func TestLastSaidSurvivesAWindowThatStartsMidEntry(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "big.jsonl")
+	// One entry larger than the window, then the prose, then the edit — the shape
+	// a session takes right after an agent writes a large file.
+	filler := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"` +
+		strings.Repeat("x", 1<<20) + `"}]}}`
+	body := filler + "\n" +
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Real bug: the guard only gated the exact scan."}]}}` + "\n" +
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"a.go","new_string":"x"}}]}}` + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := lastSaid(path); got != "Real bug: the guard only gated the exact scan." {
+		t.Errorf("lastSaid = %q — the window trim dropped a whole entry", got)
+	}
+}
+
+// Verbatim from the three sessions this filter was read off. The accepts are
+// reasons worth a permanent record; the rejects are the two ways the pairing
+// produces junk — narration, and prose about something other than the edit.
+func TestCaptureWorthy(t *testing.T) {
+	cases := []struct {
+		name string
+		said string
+		text string
+		path string
+		want bool
+	}{{
+		name: "a correction naming a symbol in the edit",
+		said: "One real finding: the weighting fixed the mixed case but not the all-boilerplate case. Because the score is a ratio, a span where every line is common scores 1.0. The `identifiable` guard has to gate both scans, not just the exact one.",
+		text: "\tif identifiable(lines) {",
+		path: "/repo/anchor.go",
+		want: true,
+	}, {
+		name: "a correction naming the file rather than a symbol",
+		said: "One more false positive: `author.go:199` is a comment that mentions the marker mid-sentence. The convention is that a note begins with it, so a prefix is stricter and simpler.",
+		text: "\tif !strings.HasPrefix(line, marker) {",
+		path: "/repo/author.go",
+		want: true,
+	}, {
+		// The dominant discard: 14 of 38 distinct reasons in one session.
+		name: "sequencing narration",
+		said: "Now the authoring side — `add`, and `backfill` reusing it.",
+		text: "func add(file string) error {",
+		path: "/repo/author.go",
+		want: false,
+	}, {
+		// Real: this was paired with a file edit because it was what the
+		// assistant happened to be saying at the time.
+		name: "prose about something other than the code",
+		said: "Claude for Open Source is the one to apply for right now — Max 20x, 6 months free, and it needs no company. Sitting on it would be wrong.",
+		text: "func add(file string) error {",
+		path: "/repo/author.go",
+		want: false,
+	}, {
+		name: "a marker but nothing tying it to this edit",
+		said: "Real bug: the retry loop stampedes. Fixed it.",
+		text: "func add(file string) error {",
+		path: "/repo/author.go",
+		want: false,
+	}}
+
+	for _, c := range cases {
+		if got := captureWorthy(c.said, c.text, c.path); got != c.want {
+			t.Errorf("%s: captureWorthy = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestBackticked(t *testing.T) {
+	got := backticked("the `identifiable` guard gates `exactScan` and a stray ` tick")
+	if len(got) != 2 || got[0] != "identifiable" || got[1] != "exactScan" {
+		t.Errorf("backticked = %q, want the two closed spans and nothing from the unterminated one", got)
+	}
+	if got := backticked("no ticks here"); got != nil {
+		t.Errorf("backticked = %q, want nil", got)
+	}
+}
+
+func runHookPost(t *testing.T, payload string) string {
+	t.Helper()
+	inR, inW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(inW, payload); err != nil {
+		t.Fatal(err)
+	}
+	inW.Close()
+
+	outR, outW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldIn, oldOut := os.Stdin, os.Stdout
+	os.Stdin, os.Stdout = inR, outW
+	defer func() { os.Stdin, os.Stdout = oldIn, oldOut }()
+
+	hookPost()
+	outW.Close()
+	b, err := io.ReadAll(outR)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// postPayload is hookJSON plus the transcript, which is the only input hookPost
+// has that hookPre does not.
+func postPayload(t *testing.T, abs, transcript, neu string) string {
+	t.Helper()
+	in := hookIn{Cwd: filepath.Dir(abs), SessionID: "s1", TranscriptPath: transcript}
+	in.ToolInput.FilePath = abs
+	in.ToolInput.NewString = neu
+	b, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+func transcriptSaying(t *testing.T, said string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	entry := map[string]any{
+		"type": "assistant",
+		"message": map[string]any{
+			"role":    "assistant",
+			"content": []map[string]any{{"type": "text", "text": said}},
+		},
+	}
+	b, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(b, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// The whole path, because every piece of it is individually tested and the thing
+// that actually matters is that a real payload ends as one pending record and
+// not two. Agent records land in pending.jsonl — local, gitignored — never the
+// shared store. Properties that cannot be walked back: agent authorship,
+// unconfirmed, and no duplicate on a second edit under the same prose.
+func TestHookPostRecordsAStatedReasonOnce(t *testing.T) {
+	dir, abs, _, _ := hookRepo(t)
+	store := filepath.Join(dir, storeDirName, recordsFileName)
+	pending := filepath.Join(dir, storeDirName, pendingLogName)
+
+	before, err := Load(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tr := transcriptSaying(t, "Real bug: the counter was off by one, so `unique_line_20` was skipped entirely. Renumbering from the top fixes it.")
+	out := runHookPost(t, postPayload(t, abs, tr, "var unique_line_20 = 20"))
+
+	if after, err := Load(store); err != nil || len(after) != len(before) {
+		t.Fatalf("hookPost wrote the shared store: %d → %d", len(before), len(after))
+	}
+	rs, err := Load(pending)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rs) != 1 {
+		t.Fatalf("pending went to %d records, want 1", len(rs))
+	}
+	got := rs[0]
+
+	if got.Source != "capture" {
+		t.Errorf("source = %q, want capture", got.Source)
+	}
+	if got.Author != authorAgent {
+		t.Errorf("author = %q — a hook-written record claiming human authorship launders it past the confirm gate", got.Author)
+	}
+	if !got.unchecked() {
+		t.Errorf("record is not UNCHECKED (verified = %q); nothing here has had human attention", got.Verified)
+	}
+	if got.Start != 20 || got.End != 20 {
+		t.Errorf("anchored to %d-%d, want 20-20 — the span the edit actually wrote", got.Start, got.End)
+	}
+	if got.Why == "" {
+		t.Error("why is empty; the sentence after the first is the reason and it was dropped")
+	}
+	if !strings.Contains(hookContext(t, out), got.ID) {
+		t.Errorf("the agent was not told what was recorded; context = %q", hookContext(t, out))
+	}
+
+	// Same prose, another edit in the same batch. One assistant message covers
+	// several edits, so without the dedup this is where pending doubles.
+	runHookPost(t, postPayload(t, abs, tr, "var unique_line_21 = 21"))
+	if again, err := Load(pending); err != nil || len(again) != 1 {
+		t.Errorf("second edit under the same prose added a pending record: %d, want 1", len(again))
+	}
+}
+
+func TestHookPostWritesPendingNotRecords(t *testing.T) {
+	dir, abs, _, _ := hookRepo(t)
+	store := filepath.Join(dir, storeDirName, recordsFileName)
+	pending := filepath.Join(dir, storeDirName, pendingLogName)
+	before, err := Load(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tr := transcriptSaying(t, "Real bug: the counter was off by one, so `unique_line_20` was skipped entirely. Renumbering from the top fixes it.")
+	runHookPost(t, postPayload(t, abs, tr, "var unique_line_20 = 20"))
+
+	if after, err := Load(store); err != nil || len(after) != len(before) {
+		t.Fatalf("shared store grew from %d to %d", len(before), len(after))
+	}
+	prs, err := Load(pending)
+	if err != nil || len(prs) != 1 {
+		t.Fatalf("pending = %d, want 1 (%v)", len(prs), err)
+	}
+	if prs[0].Author != authorAgent || prs[0].Source != "capture" {
+		t.Errorf("pending record = %+v", prs[0])
+	}
+}
+
+func TestLookupAndCheckIgnorePending(t *testing.T) {
+	dir, abs, _, _ := hookRepo(t)
+	tr := transcriptSaying(t, "Real bug: the counter was off by one, so `unique_line_20` was skipped entirely. Renumbering from the top fixes it.")
+	runHookPost(t, postPayload(t, abs, tr, "var unique_line_20 = 20"))
+
+	prs, err := Load(filepath.Join(dir, storeDirName, pendingLogName))
+	if err != nil || len(prs) != 1 {
+		t.Fatalf("need a pending record, got %d (%v)", len(prs), err)
+	}
+	decision := prs[0].Decision
+
+	store, root, ok := FindStore(abs)
+	if !ok {
+		t.Fatal("store vanished")
+	}
+	rs, err := Load(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range Match(root, rs, Rel(root, abs), 0) {
+		if r.ID == prs[0].ID || r.Decision == decision {
+			t.Fatal("lookup surfaced a pending record")
+		}
+	}
+
+	out := runHookPre(t, hookJSON(t, "s1", abs, "var unique_line_20 = 20", "var unique_line_20 = 21", false))
+	if strings.Contains(out, decision) {
+		t.Errorf("PreToolUse hook surfaced pending: %q", out)
+	}
+
+	findings := inspect(rs, map[string]bool{prs[0].ID: true}, Rel(root, abs),
+		fileLines(abs), fileLines(abs), []lineSpan{{20, 20}})
+	for _, f := range findings {
+		if f.r.ID == prs[0].ID {
+			t.Fatal("check reported a pending record")
+		}
+	}
+}
+
+func TestHookPostDedupSeesPending(t *testing.T) {
+	dir, abs, _, _ := hookRepo(t)
+	pending := filepath.Join(dir, storeDirName, pendingLogName)
+	tr := transcriptSaying(t, "Real bug: the counter was off by one, so `unique_line_20` was skipped entirely. Renumbering from the top fixes it.")
+	runHookPost(t, postPayload(t, abs, tr, "var unique_line_20 = 20"))
+	runHookPost(t, postPayload(t, abs, tr, "var unique_line_20 = 20"))
+	prs, err := Load(pending)
+	if err != nil || len(prs) != 1 {
+		t.Fatalf("dedup missed pending: %d (%v)", len(prs), err)
+	}
+}
+
+// Narration is the majority of what an agent says, so the quiet path is the one
+// that runs most often. Writing nothing has to mean writing nothing — no record,
+// no output, no store created.
+func TestHookPostWritesNothingForNarration(t *testing.T) {
+	dir, abs, _, _ := hookRepo(t)
+	store := filepath.Join(dir, storeDirName, "records.jsonl")
+	before, err := Load(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tr := transcriptSaying(t, "Now the onboarding flow — `unique_line_20`, and the callers that use it.")
+	if out := runHookPost(t, postPayload(t, abs, tr, "var unique_line_20 = 20")); out != "" {
+		t.Errorf("hook spoke on a narration turn: %q", out)
+	}
+	if after, err := Load(store); err != nil || len(after) != len(before) {
+		t.Errorf("store grew from %d to %d on narration", len(before), len(after))
+	}
+}
+
+func TestHookPostRefusesEnvValue(t *testing.T) {
+	dir, abs, _, _ := hookRepo(t)
+	if err := os.WriteFile(filepath.Join(dir, ".env"),
+		[]byte("API_TOKEN=whence-test-token-9f2a1c\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pending := filepath.Join(dir, storeDirName, pendingLogName)
+	store := filepath.Join(dir, storeDirName, recordsFileName)
+	before, err := Load(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tr := transcriptSaying(t, "Real bug: leaked whence-test-token-9f2a1c into `unique_line_20`. Never write the token down.")
+	if out := runHookPost(t, postPayload(t, abs, tr, "var unique_line_20 = 20")); out != "" {
+		t.Errorf("hook spoke after refusing a secret: %q", out)
+	}
+	if after, err := Load(store); err != nil || len(after) != len(before) {
+		t.Errorf("shared store grew on a secret-bearing write")
+	}
+	if prs, err := Load(pending); err != nil || len(prs) != 0 {
+		t.Errorf("pending grew on a secret-bearing write: %d (%v)", len(prs), err)
 	}
 }
