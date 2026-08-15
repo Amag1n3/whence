@@ -280,6 +280,7 @@ func TestSecretShapeRefused(t *testing.T) {
 		"token ghp_XYZ for the deploy",
 		"AWS AKIAIOSFODNN7EXAMPLE left in",
 		"-----BEGIN PRIVATE KEY----- oops",
+		"bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig",
 	} {
 		if !secretShape(text) {
 			t.Errorf("should refuse a secret shape: %q", text)
@@ -864,5 +865,243 @@ func TestConfirmMarksAnAgentRecordChecked(t *testing.T) {
 	}
 	if rs[0].unchecked() {
 		t.Error("a confirmed record is no longer unchecked")
+	}
+}
+
+func seedPending(t *testing.T, file string, start, end int, decision, why string) (Record, string, string) {
+	t.Helper()
+	abs, err := filepath.Abs(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, root, ok := FindStore(abs)
+	if !ok {
+		t.Fatal("no store")
+	}
+	r, _, err := makeRecord(abs, root, file, start, end, decision, why, "capture", authorAgent, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := save(pendingFile(root), []Record{r}); err != nil {
+		t.Fatal(err)
+	}
+	return r, store, root
+}
+
+func TestConfirmPromotesPending(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	writeFile(t, dir, "session.go", block)
+	if _, _, err := add("session.go", 2, 4, "human", "why", "manual", authorHuman, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	r, store, root := seedPending(t, "session.go", 2, 4, "agent decision", "because the span is still there")
+	rs, err := Load(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := promotePending(root, store, rs, r.ID)
+	if err != nil || !ok {
+		t.Fatalf("promote: ok=%v err=%v", ok, err)
+	}
+	if got.Verified == "" {
+		t.Fatal("confirm must stamp Verified")
+	}
+
+	prs, err := Load(pendingFile(root))
+	if err != nil || len(prs) != 0 {
+		t.Fatalf("pending still has %d records (%v)", len(prs), err)
+	}
+	after, err := Load(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, x := range after {
+		if x.ID == r.ID && x.Verified != "" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("promoted record missing from the shared store")
+	}
+}
+
+func TestConfirmRefusesOrphanedPending(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	writeFile(t, dir, "session.go", block)
+	if _, _, err := add("session.go", 2, 4, "human", "why", "manual", authorHuman, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	r, store, root := seedPending(t, "session.go", 2, 4, "agent decision", "because the span is still there")
+	writeFile(t, dir, "session.go", []string{"package gone", "func f() {}"})
+
+	rs, err := Load(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := promotePending(root, store, rs, r.ID); err == nil {
+		t.Fatal("confirm must refuse a pending record whose anchor is gone")
+	}
+
+	prs, err := Load(pendingFile(root))
+	if err != nil || len(prs) != 1 || prs[0].ID != r.ID {
+		t.Fatalf("refused promote must leave pending untouched, got %+v (%v)", prs, err)
+	}
+	after, err := Load(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, x := range after {
+		if x.ID == r.ID {
+			t.Fatal("refused promote wrote the shared store")
+		}
+	}
+}
+
+func TestConfirmRefusesAlteredPending(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	writeFile(t, dir, "session.go", block)
+	if _, _, err := add("session.go", 2, 4, "human", "why", "manual", authorHuman, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	r, store, root := seedPending(t, "session.go", 2, 4, "agent decision", "because the span is still there")
+	rewritten := append([]string(nil), block...)
+	rewritten[3] = `	store.Set("CHECKOUT_role", roleOf(s))`
+	writeFile(t, dir, "session.go", rewritten)
+
+	rs, err := Load(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := resolveAnchor(fileLines(filepath.Join(dir, "session.go")), r); a.State != StateWeak {
+		t.Fatalf("the rewrite should leave the pending record altered, got %q — this test is not testing what it thinks", a.State)
+	}
+	_, _, err = promotePending(root, store, rs, r.ID)
+	if err == nil {
+		t.Fatal("confirm must refuse a pending record whose block was altered")
+	}
+	if !strings.Contains(err.Error(), string(StateWeak)) {
+		t.Errorf("refusal must name the resolved state, got %q", err)
+	}
+	if !strings.Contains(err.Error(), "whence add") || !strings.Contains(err.Error(), "whence rm "+r.ID) {
+		t.Errorf("refusal must name whence add and whence rm, got %q", err)
+	}
+	if strings.Contains(err.Error(), "reanchor") {
+		t.Errorf("refusal must not mention reanchor, got %q", err)
+	}
+
+	prs, err := Load(pendingFile(root))
+	if err != nil || len(prs) != 1 || prs[0].ID != r.ID {
+		t.Fatalf("refused promote must leave pending untouched, got %+v (%v)", prs, err)
+	}
+	after, err := Load(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, x := range after {
+		if x.ID == r.ID {
+			t.Fatal("refused promote wrote the shared store")
+		}
+	}
+}
+
+func TestConfirmPromotesMovedPending(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	writeFile(t, dir, "session.go", block)
+	if _, _, err := add("session.go", 2, 4, "human", "why", "manual", authorHuman, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	r, store, root := seedPending(t, "session.go", 2, 4, "agent decision", "because the span is still there")
+	moved := append([]string{"store := sessionStore(ctx)", ""}, block...)
+	writeFile(t, dir, "session.go", moved)
+
+	rs, err := Load(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := promotePending(root, store, rs, r.ID)
+	if err != nil || !ok {
+		t.Fatalf("promote: ok=%v err=%v", ok, err)
+	}
+	if got.Anchor.State != StateDrifted {
+		t.Fatalf("a moved but identical block should promote as drifted, got %q", got.Anchor.State)
+	}
+	if got.Anchor.Start != 4 || got.Anchor.End != 6 {
+		t.Fatalf("promoted record should land on the new lines 4-6, got %d-%d", got.Anchor.Start, got.Anchor.End)
+	}
+
+	prs, err := Load(pendingFile(root))
+	if err != nil || len(prs) != 0 {
+		t.Fatalf("pending still has %d records (%v)", len(prs), err)
+	}
+	after, err := Load(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, x := range after {
+		if x.ID == r.ID {
+			found = true
+			a := resolveAnchor(fileLines(filepath.Join(dir, "session.go")), x)
+			if a.Start != 4 || a.End != 6 {
+				t.Fatalf("store copy should still resolve to 4-6, got %d-%d", a.Start, a.End)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("promoted record missing from the shared store")
+	}
+}
+
+func TestRmPendingDoesNotRetract(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	writeFile(t, dir, "session.go", block)
+	if _, _, err := add("session.go", 2, 4, "human", "why", "manual", authorHuman, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	r, _, root := seedPending(t, "session.go", 2, 4, "agent decision", "because the span is still there")
+	gone, ok, err := dropPending(root, r.ID)
+	if err != nil || !ok || gone.ID != r.ID {
+		t.Fatalf("dropPending: ok=%v err=%v gone=%+v", ok, err, gone)
+	}
+	if _, err := os.Stat(filepath.Join(dir, storeDirName, retractedLogName)); err == nil {
+		t.Fatal("rm on pending wrote retracted.jsonl")
+	}
+	prs, err := Load(pendingFile(root))
+	if err != nil || len(prs) != 0 {
+		t.Fatalf("pending still has %d (%v)", len(prs), err)
+	}
+}
+
+func TestEnvValueRefused(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	writeFile(t, dir, "session.go", block)
+	if err := os.WriteFile(filepath.Join(dir, ".env"),
+		[]byte("API_TOKEN=whence-test-token-9f2a1c\nPORT=3000\nNODE_ENV=development\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := add("session.go", 2, 4,
+		"hardcode whence-test-token-9f2a1c because vault is down", "",
+		"manual", authorHuman, nil); err == nil {
+		t.Fatal("a record containing a .env value must be refused")
+	}
+
+	// Ordinary values from the same file must not widen the net.
+	if _, _, err := add("session.go", 2, 4,
+		"namespace session keys", "the dashboard reads them",
+		"manual", authorHuman, nil); err != nil {
+		t.Fatalf("a record without a secret value was refused: %v", err)
 	}
 }

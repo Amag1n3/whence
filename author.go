@@ -94,6 +94,15 @@ func confirmCmd(args []string) {
 	}
 	store, root, rs := openStore()
 
+	if rec, ok, err := promotePending(root, store, rs, args[0]); err != nil {
+		fmt.Fprintln(os.Stderr, "whence:", err)
+		os.Exit(1)
+	} else if ok {
+		fmt.Printf("confirmed [%s]\n", rec.ID)
+		print1(rec)
+		return
+	}
+
 	for i := range rs {
 		if rs[i].ID != args[0] {
 			continue
@@ -117,6 +126,46 @@ func confirmCmd(args []string) {
 	}
 	fmt.Fprintf(os.Stderr, "whence: no record [%s] in %s\n", args[0], store)
 	os.Exit(1)
+}
+
+// promotePending moves a pending record into the shared store after re-resolving
+// its anchor. Only an intact span can be promoted: the recorded text has to be
+// byte-identical to what the agent explained, possibly at a new line number.
+// Anything else is a claim about text nobody has checked as it now stands, and
+// stamping Verified on it would promote a guess to a stored certainty (§18.1).
+// A revert is the orphaned case of the same rule — the §30 revert rule,
+// proposed, not settled. Returns ok=false when id is not pending.
+func promotePending(root, store string, rs []Record, id string) (Resolved, bool, error) {
+	prs, err := Load(pendingFile(root))
+	if err != nil {
+		return Resolved{}, false, err
+	}
+	for i, r := range prs {
+		if r.ID != id {
+			continue
+		}
+		lines := fileLinesWithin(filepath.Join(root, r.File), root)
+		a := resolveAnchor(lines, r)
+		if a.State != StateExact && a.State != StateDrifted {
+			return Resolved{}, true, fmt.Errorf("record [%s] cannot be promoted — the span now reads as %s. Write it in your own words with whence add, or drop it with whence rm %s", id, a.State, id)
+		}
+		if err := admit(root, r.File, r.Start, r.Decision, r.Why); err != nil {
+			return Resolved{}, true, err
+		}
+		r.Verified = time.Now().Format("2006-01-02")
+		if err := save(store, append(rs, r)); err != nil {
+			return Resolved{}, true, err
+		}
+		if err := save(pendingFile(root), append(prs[:i], prs[i+1:]...)); err != nil {
+			return Resolved{}, true, err
+		}
+		return Resolved{
+			Record:  r,
+			Anchor:  a,
+			Grounds: resolveEvidence(root, r),
+		}, true, nil
+	}
+	return Resolved{}, false, nil
 }
 
 // --- re-pointing evidence -----------------------------------------------
@@ -395,27 +444,7 @@ func add(file string, start, end int, decision, why, source, author string, evid
 		fmt.Println("created", filepath.Join(root, storeDirName))
 	}
 
-	// A record can only concern a file inside its own repo — outside it there
-	// is nothing to anchor to, and an outside file must not even be READ on a
-	// crafted record's say-so (the anchor verdict is a one-bit hash oracle).
-	// This check has to precede the read below: anchorSpan hashes the file, so
-	// asking "is this mine to read" after reading it answers too late.
-	if outsideRoot(abs, root) {
-		return Resolved{}, "", fmt.Errorf("whence: %s is outside the repo rooted at %s", file, root)
-	}
-
-	// The store is committed and shared, so a record is a public artifact. A
-	// decision or reason containing a secret-shaped string — a key pasted into a
-	// comment, then harvested — becomes a public commit, and git history is
-	// append-only, so there is no taking it back. Refuse at the one admission
-	// point every record passes through. The match is never printed: naming the
-	// shape would re-transcribe the secret into the terminal.
-	if secretShape(decision) || secretShape(why) {
-		return Resolved{}, "", fmt.Errorf("whence: %s:%d — the text looks like it holds a credential (a key or token shape); refusing to commit it to a shared store. Rephrase without the secret", file, start)
-	}
-
-	lines := fileLinesWithin(abs, root)
-	hashes, err := anchorSpan(lines, file, start, end)
+	r, lines, err := makeRecord(abs, root, file, start, end, decision, why, source, author, evidence)
 	if err != nil {
 		return Resolved{}, "", err
 	}
@@ -424,10 +453,46 @@ func add(file string, start, end int, decision, why, source, author string, evid
 	if err != nil {
 		return Resolved{}, "", err
 	}
+	if err := save(store, append(rs, r)); err != nil {
+		return Resolved{}, "", err
+	}
+	return Resolved{
+		Record:  r,
+		Anchor:  resolveAnchor(lines, r),
+		Grounds: resolveEvidence(root, r),
+	}, store, nil
+}
+
+func pendingFile(root string) string {
+	return filepath.Join(root, storeDirName, pendingLogName)
+}
+
+// makeRecord builds a Record the same way add does — same anchor, same id, same
+// refusals — without choosing a destination file. hookPost writes the result to
+// pending.jsonl; add writes it to the shared store.
+func makeRecord(abs, root, file string, start, end int, decision, why, source, author string, evidence []string) (Record, []string, error) {
+	// A record can only concern a file inside its own repo — outside it there
+	// is nothing to anchor to, and an outside file must not even be READ on a
+	// crafted record's say-so (the anchor verdict is a one-bit hash oracle).
+	// This check has to precede the read below: anchorSpan hashes the file, so
+	// asking "is this mine to read" after reading it answers too late.
+	if outsideRoot(abs, root) {
+		return Record{}, nil, fmt.Errorf("whence: %s is outside the repo rooted at %s", file, root)
+	}
+
+	if err := admit(root, file, start, decision, why); err != nil {
+		return Record{}, nil, err
+	}
+
+	lines := fileLinesWithin(abs, root)
+	hashes, err := anchorSpan(lines, file, start, end)
+	if err != nil {
+		return Record{}, nil, err
+	}
 
 	ev, err := buildEvidence(root, evidence)
 	if err != nil {
-		return Resolved{}, "", err
+		return Record{}, nil, err
 	}
 
 	r := Record{
@@ -453,15 +518,7 @@ func add(file string, start, end int, decision, why, source, author string, evid
 		r.Verified = r.Date
 	}
 	r.ID = newID(r)
-
-	if err := save(store, append(rs, r)); err != nil {
-		return Resolved{}, "", err
-	}
-	return Resolved{
-		Record:  r,
-		Anchor:  resolveAnchor(lines, r),
-		Grounds: resolveEvidence(root, r),
-	}, store, nil
+	return r, lines, nil
 }
 
 // createStore makes a store in the working directory. Deliberately not "the git
@@ -486,7 +543,7 @@ func createStore() (store, root string, err error) {
 	if _, err := os.Stat(ign); os.IsNotExist(err) {
 		// *.tmp too: save writes through one, and an interrupted write should
 		// not leave a committable artifact behind.
-		if err := os.WriteFile(ign, []byte(surfacedLogName+"\n*.tmp\n"), 0o644); err != nil {
+		if err := os.WriteFile(ign, []byte(surfacedLogName+"\n"+pendingLogName+"\n*.tmp\n"), 0o644); err != nil {
 			return "", "", err
 		}
 	}
@@ -625,6 +682,15 @@ func rmCmd(args []string) {
 
 	store, root, rs := openStore()
 
+	if gone, ok, err := dropPending(root, id); err != nil {
+		fmt.Fprintln(os.Stderr, "whence:", err)
+		os.Exit(1)
+	} else if ok {
+		fmt.Printf("removed [%s] %s:%d-%d — %s\n",
+			gone.ID, gone.File, gone.Start, gone.End, gone.Decision)
+		return
+	}
+
 	gone, err := removeRecord(store, root, rs, id, *reason)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "whence:", err)
@@ -635,6 +701,30 @@ func rmCmd(args []string) {
 	if *reason == "" {
 		fmt.Println("no reason given. `-w \"...\"` next time — the retraction log is how you find out how often this tool is wrong.")
 	}
+}
+
+func dropPending(root, id string) (Record, bool, error) {
+	path := pendingFile(root)
+	rs, err := Load(path)
+	if err != nil {
+		return Record{}, false, err
+	}
+	kept := make([]Record, 0, len(rs))
+	var gone *Record
+	for i, r := range rs {
+		if r.ID == id {
+			gone = &rs[i]
+			continue
+		}
+		kept = append(kept, r)
+	}
+	if gone == nil {
+		return Record{}, false, nil
+	}
+	if err := save(path, kept); err != nil {
+		return Record{}, false, err
+	}
+	return *gone, true, nil
 }
 
 func removeRecord(store, root string, rs []Record, id, reason string) (Record, error) {
@@ -896,6 +986,7 @@ var secretShapes = []string{
 	"AKIA", "ASIA", // AWS access key ids
 	"AIza",       // Google API keys
 	"-----BEGIN", // PEM private keys and certificates
+	"eyJ",        // JWT header
 }
 
 // secretShape reports whether text contains a credential-shaped token. The
@@ -908,6 +999,200 @@ func secretShape(text string) bool {
 		}
 	}
 	return false
+}
+
+// admit is the write-time scan (§14 layer 3). First net: this repo's own
+// .env / .env.* / gitignored-config values. Second net: prefix and entropy
+// shapes. The match is never printed — naming it would re-transcribe the secret.
+// Residual, stated honestly: nothing here catches paraphrase.
+func admit(root, file string, start int, decision, why string) error {
+	if secretShape(decision) || secretShape(why) || secretEntropy(decision) || secretEntropy(why) {
+		return fmt.Errorf("whence: %s:%d — the text looks like it holds a credential (a key or token shape); refusing to commit it to a shared store. Rephrase without the secret", file, start)
+	}
+	vals := envSecrets(root)
+	if holdsValue(decision, vals) || holdsValue(why, vals) {
+		return fmt.Errorf("whence: %s:%d — the text looks like it holds a credential (a key or token shape); refusing to commit it to a shared store. Rephrase without the secret", file, start)
+	}
+	return nil
+}
+
+func holdsValue(text string, vals []string) bool {
+	for _, v := range vals {
+		if strings.Contains(text, v) {
+			return true
+		}
+	}
+	return false
+}
+
+// envSecrets extracts values from the repo's own secret files. Reads .gitignore
+// as a text file — does not ask git anything (invariant 8).
+func envSecrets(root string) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(v string) {
+		if !usableSecret(v) || seen[v] {
+			return
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	for _, p := range envFiles(root) {
+		for _, v := range dotenvValues(p) {
+			add(v)
+		}
+	}
+	return out
+}
+
+func envFiles(root string) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(p string) {
+		if seen[p] || outsideRoot(p, root) {
+			return
+		}
+		st, err := os.Stat(p)
+		if err != nil || st.IsDir() {
+			return
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	if matches, err := filepath.Glob(filepath.Join(root, ".env")); err == nil {
+		for _, p := range matches {
+			add(p)
+		}
+	}
+	if matches, err := filepath.Glob(filepath.Join(root, ".env.*")); err == nil {
+		for _, p := range matches {
+			add(p)
+		}
+	}
+	b, err := os.ReadFile(filepath.Join(root, ".gitignore"))
+	if err != nil {
+		return out
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "!") {
+			continue
+		}
+		if strings.HasSuffix(line, "/") || strings.ContainsAny(line, "*?[") {
+			continue
+		}
+		add(filepath.Join(root, filepath.Clean(line)))
+	}
+	return out
+}
+
+func dotenvValues(path string) []string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		line = strings.TrimPrefix(line, "export ")
+		_, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		v = strings.TrimSpace(v)
+		if n := len(v); n >= 2 && ((v[0] == '"' && v[n-1] == '"') || (v[0] == '\'' && v[n-1] == '\'')) {
+			v = v[1 : n-1]
+		}
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// usableSecret drops values that would fire on every other record: ports,
+// booleans, NODE_ENV=development. High precision, near-zero false positives.
+func usableSecret(v string) bool {
+	if len(v) < 8 {
+		return false
+	}
+	if boringEnv[strings.ToLower(v)] {
+		return false
+	}
+	for _, r := range v {
+		if r < '0' || r > '9' {
+			return true
+		}
+	}
+	return false
+}
+
+var boringEnv = map[string]bool{
+	"true": true, "false": true,
+	"development": true, "production": true, "test": true,
+	"localhost": true, "debug": true, "info": true, "warn": true, "error": true,
+	"utf-8": true,
+}
+
+// secretEntropy is the second net: a long mixed-class token that is not a hex
+// hash. Prefix shapes are secretShape's job. ponytail: 32-char floor and hex
+// skip; homemade short secrets miss, add a real miss when one lands.
+func secretEntropy(text string) bool {
+	for _, tok := range strings.FieldsFunc(text, func(r rune) bool {
+		return r <= ' ' || r == '"' || r == '\'' || r == '`'
+	}) {
+		if entropyToken(tok) {
+			return true
+		}
+	}
+	return false
+}
+
+func entropyToken(s string) bool {
+	if len(s) < 32 {
+		return false
+	}
+	hex := true
+	var lower, upper, digit, other bool
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9':
+			digit = true
+		case r >= 'a' && r <= 'f':
+			lower = true
+		case r >= 'g' && r <= 'z':
+			lower = true
+			hex = false
+		case r >= 'A' && r <= 'F':
+			upper = true
+		case r >= 'G' && r <= 'Z':
+			upper = true
+			hex = false
+		default:
+			other = true
+			hex = false
+		}
+	}
+	if hex {
+		return false
+	}
+	n := 0
+	if lower {
+		n++
+	}
+	if upper {
+		n++
+	}
+	if digit {
+		n++
+	}
+	if other {
+		n++
+	}
+	return n >= 3
 }
 
 // splitWords are the subset of reasonWords that mark WHERE the reason

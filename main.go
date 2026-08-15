@@ -54,9 +54,13 @@ func main() {
 
 	switch os.Args[1] {
 	case "hook":
-		hookPre()
+		if len(os.Args) > 2 && os.Args[2] == "post" {
+			hookPost()
+		} else {
+			hookPre()
+		}
 	case "log":
-		logAll()
+		logAll(os.Args[2:])
 	case "add":
 		addCmd(os.Args[2:])
 	case "backfill":
@@ -84,7 +88,7 @@ func usage() {
 	fmt.Fprint(os.Stderr, `whence — remember why your code is the way it is
 
   whence <file>[:<line>]    show recorded decisions for a file, or one line
-  whence log                list every record in the nearest store
+  whence log [--pending]    list every record; --pending shows the local queue
   whence add <file>:<a>-<b> -d "decision" -w "why" [-s source] [-e evidence]
                             record a decision and anchor it to those lines.
                             -e is repeatable and takes anything checkable: a
@@ -111,6 +115,9 @@ func usage() {
                            whether a stated reason is the real one is the open
                            question, so a human reads these and decides.
   whence hook pre           (called by Claude Code; reads a hook payload on stdin)
+  whence hook post          (called by Claude Code after an edit) record the
+                           reason the agent stated for it, anchored to the span
+                           it just wrote. Marked UNCHECKED until you confirm it.
 
 Records live in .whence/records.jsonl, found by walking up from the file.
 
@@ -125,10 +132,14 @@ to your shell rc, or make your own symlink under another name.
 type hookIn struct {
 	Cwd       string `json:"cwd"`
 	SessionID string `json:"session_id"`
-	ToolInput struct {
+	// TranscriptPath is where Claude Code is writing this session. hookPost reads
+	// the tail of it for the reason; hookPre has no use for it.
+	TranscriptPath string `json:"transcript_path"`
+	ToolInput      struct {
 		FilePath   string `json:"file_path"`
 		OldString  string `json:"old_string"`  // Edit — the pre-image
 		NewString  string `json:"new_string"`  // Edit
+		Content    string `json:"content"`     // Write — the whole file
 		ReplaceAll bool   `json:"replace_all"` // Edit
 	} `json:"tool_input"`
 }
@@ -526,7 +537,13 @@ func query(target string) {
 	}
 }
 
-func logAll() {
+func logAll(args []string) {
+	pendingOnly := false
+	for _, a := range args {
+		if a == "--pending" {
+			pendingOnly = true
+		}
+	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "whence:", err)
@@ -536,6 +553,10 @@ func logAll() {
 	store, root, ok := FindStore(filepath.Join(cwd, "x"))
 	if !ok {
 		fmt.Printf("no %s/%s found above %s\n", storeDirName, recordsFileName, cwd)
+		return
+	}
+	if pendingOnly {
+		logPending(root)
 		return
 	}
 	rs, err := Load(store)
@@ -575,8 +596,34 @@ func logAll() {
 	// stores degrade, and the rare cases go first — which for this tool are
 	// exactly the records that justify it. A number trending toward agent-written
 	// and unchecked is the warning, and it arrives long before the damage does.
-	fmt.Printf("\n%d records · %d human, %d agent · %d unchecked · %d orphaned\n",
-		len(rs), len(rs)-byAgent, byAgent, unchecked, orphans)
+	npend := 0
+	if prs, err := Load(pendingFile(root)); err == nil {
+		npend = len(prs)
+	}
+	fmt.Printf("\n%d records · %d human, %d agent · %d unchecked · %d orphaned · %d pending\n",
+		len(rs), len(rs)-byAgent, byAgent, unchecked, orphans, npend)
+}
+
+func logPending(root string) {
+	path := pendingFile(root)
+	rs, err := Load(path)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "whence:", err)
+		os.Exit(1)
+	}
+	if len(rs) == 0 {
+		fmt.Println("no pending records")
+		return
+	}
+	fmt.Println(path)
+	for _, r := range rs {
+		print1(Resolved{
+			Record:  r,
+			Anchor:  resolveAnchor(fileLinesWithin(filepath.Join(root, r.File), root), r),
+			Grounds: resolveEvidence(root, r),
+		})
+	}
+	fmt.Printf("\n%d pending\n", len(rs))
 }
 
 func print1(r Resolved) {

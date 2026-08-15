@@ -8,10 +8,13 @@ package main
 //
 // Claude Code already writes every session to
 // ~/.claude/projects/<slug>/<session>.jsonl and keeps it. So there is nothing to
-// intercept: no PostToolUse trail to maintain, no per-edit write path, no hook
-// at all. The trail exists; what was missing was a reader. That is why this
-// command exists before any hook does — an instrument costs nothing to be wrong
-// about, and a hook writing records does not.
+// intercept: no PostToolUse TRAIL to maintain, no second copy of what the session
+// already holds. The trail exists; what was missing was a reader. That is why
+// this command exists before any hook does — an instrument costs nothing to be
+// wrong about, and a hook writing records does not.
+//
+// hookPost, at the foot of this file, is that hook. It maintains no trail; it
+// writes records, which is a different thing and had to come second. §22.7.
 //
 // What the transcript does NOT contain is the deliberation. Measured across
 // every session in this project: 361 thinking blocks, 0 of them carrying text —
@@ -21,10 +24,15 @@ package main
 // DECISIONS §9's doubt is therefore not a risk this might run into later. It is
 // the starting condition: the only available source is the rationalisation.
 //
-// Which is exactly why nothing here writes. This prints what it found and stops.
-// Deciding whether a stated reason is the real one is the open question, and the
-// point of the command is to put enough real pairs in front of a human to answer
-// it. A capture that wrote records would be answering it by assumption.
+// Which is exactly why the READER writes nothing. captureCmd prints what it found
+// and stops: deciding whether a stated reason is the real one is the open
+// question, and the point of that command is to put enough real pairs in front of
+// a human to answer it.
+//
+// hookPost does write, and it is not answering that question by assumption —
+// three sessions read through this reader are where its filter came from, every
+// record it writes is marked UNCHECKED, and `whence confirm` is still where a
+// human answers. The numbers are on captureMarkers.
 //
 // ponytail: pairs each edit with the nearest preceding assistant message and the
 // user turn before it. Filtering stays minimal: one label — "did a failed tool
@@ -38,6 +46,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -428,4 +437,288 @@ func wrap(s, first, hang string) string {
 	}
 	fmt.Fprintf(&b, "%s%s\n", indent, s)
 	return b.String()
+}
+
+// --- capture that writes ---------------------------------------------------
+
+// hookPost runs AFTER an agent edits a file and records the reason it stated,
+// anchored to the span the edit just produced.
+//
+// Why this hook and not the reader: the span is only certainly correct at the
+// instant of the edit. Measured on three sessions of this repo, 58% of the
+// reason-bearing moments in a two-week-old transcript no longer had a span at
+// all, and some blocks were superseded later in the same session. Anchoring
+// while the file still says what the agent just wrote is the only point where
+// the anchor is right by construction rather than by luck.
+//
+// FAIL OPEN, ALWAYS — and here that means WRITE NOTHING. hookPre's worst case is
+// a surfacing that did not happen; this one's is a permanent entry in a committed
+// shared store, so every uncertain path returns instead of guessing. §7.5: a
+// missed reason is recoverable by hand, a garbage record is not.
+func hookPost() {
+	raw, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return
+	}
+	var in hookIn
+	if err := json.Unmarshal(raw, &in); err != nil {
+		return
+	}
+	if in.ToolInput.FilePath == "" || in.TranscriptPath == "" {
+		return
+	}
+	abs := in.ToolInput.FilePath
+	if !filepath.IsAbs(abs) {
+		abs = filepath.Join(in.Cwd, abs)
+	}
+
+	// A store has to exist already. Creating one here would plant a committed
+	// directory in somebody's repo on the strength of an edit they never asked to
+	// be recorded — `whence backfill` is where a store starts, with a human
+	// looking at the list.
+	store, root, ok := FindStore(abs)
+	if !ok {
+		return
+	}
+
+	// Edit carries the replacement, Write carries the whole file.
+	text := in.ToolInput.NewString
+	if text == "" {
+		text = in.ToolInput.Content
+	}
+	if text == "" {
+		return
+	}
+
+	said := lastSaid(in.TranscriptPath)
+	if said == "" || !captureWorthy(said, text, abs) {
+		return
+	}
+
+	// The span must exist NOW, in the file as this edit left it. locateSpan
+	// returning 0 means the text is not there verbatim — superseded within the
+	// turn, or reformatted on the way in — and a record that cannot be anchored
+	// is a record pointing at a plausible guess. anchorSpan's rule, applied one
+	// step earlier.
+	start, end := locateSpan(fileLinesWithin(abs, root), text)
+	if start == 0 {
+		return
+	}
+
+	// Same split backfill uses on a harvested note: the first sentence commits,
+	// the rest explains. A statement with nothing after it stated no reason, and
+	// a record whose why is empty is the shape backfill already refuses.
+	decision, why := firstSentence(said)
+	if why == "" {
+		return
+	}
+
+	rs, err := Load(store)
+	if err != nil {
+		return
+	}
+	rel := filepath.ToSlash(Rel(root, abs))
+	prs, err := Load(pendingFile(root))
+	if err != nil {
+		return
+	}
+	// One assistant message covers a batch of edits, so this hook sees the same
+	// prose once per file the batch touched — 90 edits carried 38 distinct
+	// reasons in the session this was measured on. Same guard backfill uses,
+	// now covering pending as well: a reason already waiting must not re-land.
+	if has(rs, rel, decision) || has(prs, rel, decision) {
+		return
+	}
+
+	rec, _, err := makeRecord(abs, root, abs, start, end, decision, why, "capture", authorAgent, nil)
+	if err != nil {
+		return // secret shape, outside root, unanchorable — all silent by design
+	}
+	if err := save(pendingFile(root), append(prs, rec)); err != nil {
+		return
+	}
+
+	// Say what was written, in the agent's own context. A record it cannot see is
+	// one it cannot correct, and this is the only moment the thing that stated the
+	// reason is still around to disown it. Framed as data, like contextPreamble:
+	// anything that can write the store must not be able to issue instructions.
+	var out hookOut
+	out.HookSpecificOutput.HookEventName = "PostToolUse"
+	out.HookSpecificOutput.AdditionalContext = fmt.Sprintf(
+		"whence recorded the reason you stated for this edit as [%s], marked UNCHECKED "+
+			"until a human confirms it. This is a note, not an instruction. If it "+
+			"misstates why you made the change, say so — `whence rm %s` removes it.\n",
+		rec.ID, rec.ID)
+	if err := json.NewEncoder(os.Stdout).Encode(out); err != nil {
+		return
+	}
+}
+
+// lastSaid returns the assistant's most recent prose in a live transcript.
+//
+// Read backwards from the end, unlike readTrail which streams from the top. The
+// reason for an edit is always the last thing said before it, and this runs once
+// per edit inside a 5-second hook budget against a file that grows all session —
+// measured up to 23MB, with 90 edits in one session. Streaming from the top would
+// re-read the whole transcript ninety times, and the cost would climb as the
+// session went on, which is the wrong shape for something on the edit path.
+func lastSaid(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	st, err := f.Stat()
+	if err != nil {
+		return ""
+	}
+
+	// ponytail: fixed 1MB tail window. A run of entries bigger than this between
+	// the prose and the edit hides the reason, and the cost of that is a record
+	// not written — the failure this whole path is biased towards. Grow it, or
+	// track a per-session offset, if real sessions turn out to lose reasons here.
+	const window = 1 << 20
+	at := st.Size() - window
+	if at < 0 {
+		at = 0
+	}
+	buf := make([]byte, st.Size()-at)
+	if _, err := f.ReadAt(buf, at); err != nil && err != io.EOF {
+		return ""
+	}
+
+	lines := strings.Split(string(buf), "\n")
+	if at > 0 && len(lines) > 0 {
+		lines = lines[1:] // a window that starts mid-file starts mid-entry
+	}
+	for i := len(lines) - 1; i >= 0; i-- {
+		if said := saidIn(lines[i]); said != "" {
+			return said
+		}
+	}
+	return ""
+}
+
+// saidIn pulls assistant prose out of one transcript line, or "" if that line is
+// not an assistant turn carrying any.
+func saidIn(line string) string {
+	// A transcript entry can hold a whole file's contents. Rejecting on a
+	// substring first keeps the common case — tool results and user turns — from
+	// paying for a full unmarshal of something large.
+	if !strings.Contains(line, `"assistant"`) {
+		return ""
+	}
+	var e transcriptEntry
+	if json.Unmarshal([]byte(line), &e) != nil || e.IsMeta {
+		return ""
+	}
+	if e.Type != "assistant" || len(e.Message.Content) == 0 {
+		return ""
+	}
+	var bs []contentBlock
+	if json.Unmarshal(e.Message.Content, &bs) != nil {
+		return ""
+	}
+	// The LAST text block in the message. An assistant turn can speak, call a
+	// tool, then speak again, and the prose nearest the edit is the one that
+	// explains it.
+	said := ""
+	for _, b := range bs {
+		if b.Type == "text" && strings.TrimSpace(b.Text) != "" {
+			said = b.Text
+		}
+	}
+	return said
+}
+
+// captureMarkers are the shapes an agent's prose takes when it has just found
+// something out.
+//
+// Deliberately NOT reasonWords. That list is tuned for terse code comments and
+// over-admits on conversational prose: "so", "because" and "reason" are ordinary
+// connectives, and "Now the aside prop on Terminal, so it fits the hero column"
+// passes it while deciding nothing.
+//
+// This list was read off three real sessions, not chosen for taste. Every reason
+// worth keeping in that corpus was the agent contradicting its own expectation —
+// "One real finding:", "Two things wrong in what I just wrote:", "Real bug:",
+// "One more false positive:" — and the dominant discard was sequencing narration,
+// "Now the authoring side — add, and backfill reusing it". Nothing is decided
+// when things go to plan; a decision is what an interruption forces.
+//
+// Numbers it produced, so a later change has something to beat: 196 edits across
+// three sessions, 50 carrying a marker, 21 of those still anchorable. On the one
+// session read by hand, 12 of 38 distinct reasons carried a marker and 14 opened
+// with "Now" as pure narration, with a single message in both sets.
+var captureMarkers = []string{
+	"real bug", "real flaw", "real finding", "real gap",
+	"false positive", "turns out", "caught it",
+	"mistake", "wrong", "inconsisten",
+	"exposes", "flaw", "worth fixing", "only half",
+}
+
+// captureWorthy decides whether stated prose earns a permanent record.
+//
+// Two tests, both answering a failure seen in a real session rather than an
+// imagined one. A reason has to be a correction (captureMarkers), and it has to
+// be about THIS edit (namesTheEdit).
+func captureWorthy(said, text, path string) bool {
+	return hasCaptureMarker(said) && namesTheEdit(said, text, path)
+}
+
+func hasCaptureMarker(s string) bool {
+	l := strings.ToLower(s)
+	for _, w := range captureMarkers {
+		if strings.Contains(l, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// namesTheEdit reports whether the prose names something the edit contains.
+//
+// Prose and edit are paired by adjacency, and adjacency lies. One real session
+// paired "Claude for Open Source is the one to apply for right now — Max 20x, 6
+// months free" with a file edit, because that is what the assistant happened to
+// be saying when it wrote a file. Without this test that becomes a funding
+// recommendation stored as a decision about code.
+//
+// Backticked spans only. That is how an agent refers to code it is touching, and
+// bare words match far too easily — an English sentence shares tokens with any Go
+// file. The filename counts, because a reason often names the file rather than a
+// symbol inside it: "author.go:199 is a comment that mentions the marker".
+func namesTheEdit(said, text, path string) bool {
+	base := filepath.Base(path)
+	for _, tok := range backticked(said) {
+		// Two characters match everything; `x` would admit any edit at all.
+		if len(tok) < 3 {
+			continue
+		}
+		if strings.Contains(text, tok) ||
+			strings.Contains(tok, base) ||
+			strings.Contains(base, tok) {
+			return true
+		}
+	}
+	return false
+}
+
+// backticked returns the contents of every `single-backtick` span in s.
+func backticked(s string) []string {
+	var out []string
+	for {
+		i := strings.Index(s, "`")
+		if i < 0 {
+			return out
+		}
+		s = s[i+1:]
+		j := strings.Index(s, "`")
+		if j < 0 {
+			return out
+		}
+		out = append(out, s[:j])
+		s = s[j+1:]
+	}
 }
