@@ -19,8 +19,6 @@ const DOORS: {
   label: string
   blurb: string
   external?: boolean
-  /** Spans two columns, so the five cards fill their rows exactly. */
-  wide?: boolean
 }[] = [
   {
     href: '/install',
@@ -47,11 +45,16 @@ const DOORS: {
       'Sixty-one answers — what capture does and does not do, what this reads off your machine, what happens when a record goes stale.',
   },
   {
+    href: '/notes',
+    label: 'Notes',
+    blurb:
+      'Three models graded the same 51 records 65%, 75%, 92%. Capture stays off until that number exists at useful precision.',
+  },
+  {
     href: REPO,
     label: 'GitHub',
     blurb: 'Source, issues, releases. Built in the open, Go, MIT.',
     external: true,
-    wide: true,
   },
 ]
 
@@ -121,13 +124,8 @@ export default function App() {
         </section>
 
         {/* --------------------------------------------------------- doors */}
-        {/* Real gaps between real cards. This grid was briefly a 1px-gap
-            mosaic — cards on a lighter container, the gap being the container
-            showing through. With five cards in a three-column grid the sixth
-            cell had nothing on top of it, so the container showed through a
-            whole card-sized rectangle and the section looked broken. Gapped
-            cards cannot do that: an empty cell is just page. The last card
-            spans two columns so the row fills exactly at every breakpoint. */}
+        {/* Real gaps between real cards. Six cards fill a three-column grid
+            with no leftover cell and no spanning. */}
         <section id="doors" className="border-t border-white/[0.07]">
           <div className={cn(SHELL, 'py-16 sm:py-24')}>
             <Reveal>
@@ -138,11 +136,7 @@ export default function App() {
 
             <div className="mt-9 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {DOORS.map((d, i) => (
-                <Reveal
-                  key={d.href}
-                  delay={i * 0.05}
-                  className={cn(d.wide && 'sm:col-span-2')}
-                >
+                <Reveal key={d.href} delay={i * 0.05}>
                   <a href={d.href} className="group block h-full">
                     <Card className="h-full gap-3 transition-colors group-hover:border-white/20 group-hover:bg-secondary/40">
                       <CardHeader>
