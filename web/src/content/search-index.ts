@@ -80,4 +80,5 @@ export const INDEX: Hit[] = [
   { title: 'Commands reference', body: 'Every command, flags, exit codes, what a record is, anchoring states, the store', group: 'Pages', href: '/docs' },
   { title: 'Questions', body: 'Sixty-one answers about capture, anchoring, security, privacy, scope and project status', group: 'Pages', href: '/faq' },
   { title: 'Contact', body: 'Report a bug, open an issue, email, LinkedIn, X, Instagram', group: 'Pages', href: '/contact' },
+  { title: 'Three LLMs graded the same 51 agent-written code rationales', body: '65% 75% 92% faithfulness capture stays off 2,672 edits 32.8% 33.0% 33.3% structural gate 30 unanimous good 3 unanimous bad 18 disputed human tiebreak pending', group: 'Pages', href: '/notes' },
 ]
