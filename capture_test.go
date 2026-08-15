@@ -440,6 +440,45 @@ func TestHookPostRecordsAStatedReasonOnce(t *testing.T) {
 	}
 }
 
+// One message, two edits, a reason for each. Both gates pass over the WHOLE
+// message for both edits, so this is where a true reason used to land on the
+// wrong edit — the only failure the 51 graded records showed. Scoped to the
+// paragraph that names the edit, each record carries its own reason, and the
+// third edit is the case where two paragraphs claim it: the message never said
+// which reason applies, so nothing may be written.
+func TestHookPostScopesTheReasonToTheParagraphNamingTheEdit(t *testing.T) {
+	dir, abs, _, _ := hookRepo(t)
+	pending := filepath.Join(dir, storeDirName, pendingLogName)
+
+	tr := transcriptSaying(t, "Real bug: the counter was off by one, so `unique_line_20` was skipped entirely. Renumbering from the top fixes it.\n\nSeparately, `unique_line_21` was wrong for its own reason: the cap was hard-coded. Reading it from the config instead.")
+	runHookPost(t, postPayload(t, abs, tr, "var unique_line_20 = 20"))
+	runHookPost(t, postPayload(t, abs, tr, "var unique_line_21 = 21"))
+
+	rs, err := Load(pending)
+	if err != nil || len(rs) != 2 {
+		t.Fatalf("pending = %d records, want one per edit (%v)", len(rs), err)
+	}
+	for _, r := range rs {
+		mine, theirs := "unique_line_20", "unique_line_21"
+		switch r.Start {
+		case 20:
+		case 21:
+			mine, theirs = theirs, mine
+		default:
+			t.Fatalf("record anchored at %d, want 20 or 21", r.Start)
+		}
+		if blob := r.Decision + " " + r.Why; !strings.Contains(blob, mine) || strings.Contains(blob, theirs) {
+			t.Errorf("the record at line %d reads %q / %q — that is the other edit's reason", r.Start, r.Decision, r.Why)
+		}
+	}
+
+	both := transcriptSaying(t, "Real bug: `unique_line_22` was never reached. The guard above returns first.\n\nAlso wrong: `unique_line_22` had the cap hard-coded. Reading it from the config instead.")
+	runHookPost(t, postPayload(t, abs, both, "var unique_line_22 = 22"))
+	if again, err := Load(pending); err != nil || len(again) != 2 {
+		t.Errorf("pending = %d, want 2 — two paragraphs claimed one edit and one of them was recorded anyway", len(again))
+	}
+}
+
 func TestHookPostWritesPendingNotRecords(t *testing.T) {
 	dir, abs, _, _ := hookRepo(t)
 	store := filepath.Join(dir, storeDirName, recordsFileName)

@@ -490,8 +490,8 @@ func hookPost() {
 		return
 	}
 
-	said := lastSaid(in.TranscriptPath)
-	if said == "" || !captureWorthy(said, text, abs) {
+	said := reasonParagraph(lastSaid(in.TranscriptPath), text, abs)
+	if said == "" {
 		return
 	}
 
@@ -656,6 +656,37 @@ var captureMarkers = []string{
 	"false positive", "turns out", "caught it",
 	"mistake", "wrong", "inconsisten",
 	"exposes", "flaw", "worth fixing", "only half",
+}
+
+// reasonParagraph narrows a whole assistant message to the one paragraph that
+// carries the reason for THIS edit, or returns "" to write nothing.
+//
+// Why the message is the wrong unit: of 51 hook-written records graded blind by
+// three models, not one stated a false reason — every failure was a TRUE reason
+// attached to the WRONG edit. One assistant message routinely produces several
+// file changes, and both gates applied to the whole message cannot tell them
+// apart: the correction word can sit in the paragraph about another file than
+// the backticked token does. Per paragraph, the two gates have to agree about
+// the same few lines of prose, which is what pairs a reason with its edit.
+//
+// Exactly one qualifying paragraph, or nothing. Two or more means the message
+// never said which edit the reason was for, and picking between them is the
+// coin flip this exists to remove. Recall drops, which is the intended
+// direction — §7.5, a missed reason is recoverable by hand and a wrong one is
+// not.
+func reasonParagraph(said, text, path string) string {
+	var found string
+	for _, p := range strings.Split(said, "\n\n") {
+		p = strings.TrimSpace(p)
+		if p == "" || !captureWorthy(p, text, path) {
+			continue
+		}
+		if found != "" {
+			return ""
+		}
+		found = p
+	}
+	return found
 }
 
 // captureWorthy decides whether stated prose earns a permanent record.
