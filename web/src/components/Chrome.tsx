@@ -17,6 +17,7 @@ export const SHELL = 'mx-auto w-full max-w-[1280px] px-6 sm:px-10'
  *  go missing from the other. That drift is exactly why this file exists. */
 const NAV: { href: string; label: string; key: PageKey }[] = [
   { href: '/why', label: 'why', key: 'why' },
+  { href: '/notes', label: 'notes', key: 'notes' },
   { href: '/install', label: 'install', key: 'install' },
   { href: '/docs', label: 'docs', key: 'docs' },
   { href: '/faq', label: 'questions', key: 'faq' },
@@ -26,7 +27,7 @@ const NAV: { href: string; label: string; key: PageKey }[] = [
    five items plus the logo already and wraps to two rows on a narrow phone;
    contact is a destination people look for in a footer, not something to
    spend header width on. It is rendered explicitly by Footer below. */
-export type PageKey = 'why' | 'install' | 'docs' | 'faq' | 'contact'
+export type PageKey = 'why' | 'notes' | 'install' | 'docs' | 'faq' | 'contact'
 
 export function Header({
   onLogo,
