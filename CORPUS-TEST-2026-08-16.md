@@ -103,3 +103,64 @@ reason, and a known unbounded map with its upgrade path.
 Anchoring. This exercised `harvest` and `firstSentence` only; whether an anchor
 survives a rebase in someone else's repo is still untested, and is the question
 the write-up says matters most.
+
+---
+
+# Round two — linux, rust, django
+
+Same method, run against the binary round one produced, so the three filters
+above are under test as much as anything else. Dry runs, nothing written, clones
+deleted.
+
+| repo | clone | markers | candidates | wall clock |
+|---|---|---|---|---|
+| torvalds/linux | 2.0 GB | 5,926 | 517 | 14.2 s |
+| rust-lang/rust | 459 MB | 1,993 | 303 | 5.9 s |
+| django/django | 74 MB | 34 | 3 | 0.8 s |
+
+Round one's filters held: no generated file slipped through in 823 candidates,
+and `XXX:` now has to earn its way in. Linux parses `.c`, `.h`, `.S`, `.dtsi`,
+`.py` and `.sh`; Rust's `HACK(nox):` and `NOTE(FractalFir):` attributed forms are
+matched correctly. Quality on Rust is the best seen so far — its `HACK:` notes
+are near-uniformly real decisions with reasons.
+
+## Four new defects
+
+1. **`strings.Fields` counts punctuation as a word**, so round one's own
+   six-word floor is porous. `rust/zerocopy/src/macros.rs` stores the decision
+   as `This must be a macro (` — five real words plus a stray paren. Three
+   instances in 823.
+2. **The split lands inside a parenthetical.** That same note reads "This must
+   be a macro (rather than a function with trait bounds) because …", and the cut
+   happens at "rather than", inside the brackets. The identical note two hundred
+   lines up splits correctly, only because it happens to contain a full stop and
+   never reaches `splitAtReason`.
+3. **Expected-output fixtures.** Rust's lint tests keep a generated `.fixed`
+   twin beside each `.rs` fixture, so 22 candidates arrived as identical pairs —
+   the same class as round one's generated files, in a file extension nobody
+   would guess.
+4. **A question is admitted as a decision.** Linux's
+   `arch/powerpc/.../ppc476.c` gives "Is there any reason to assume
+   differently?", which qualifies *because* the word "reason" is on the
+   admission list. CPython's "is this test needed?" and "Why can be not equal?"
+   are the same shape. A question is not a decision, and this is one cheap rule.
+
+## Django is the result worth keeping
+
+Seventy-four megabytes of mature Python produced **three records**. All three are
+fine. The repository simply does not write the markers whence reads — 34 in the
+whole tree, against 785 comment lines that carry a reason word and no marker.
+
+The same ratio holds elsewhere: Linux, 5,926 markers against ~38,000 unmarked
+reason-bearing comment lines; Rust, 1,993 against 8,651. Marker-gated harvesting
+reaches low single-digit percentages of the reasoning a codebase has already
+written down. That is the deliberate trade — a missed note is recoverable, a junk
+record in a shared store is not — but the honest day-one promise is "the notes
+you flagged loudly", not "your reasoning, made durable".
+
+## Duplicates, again
+
+72 repeated texts in linux, 36 in rust. Linux's "MUST NOT be called from
+interrupt context" appears 16 times across 16 drivers, and each one is true. The
+data is not wrong; the review experience is. Whoever promotes these from the
+queue sees sixteen separate approvals for one sentence.

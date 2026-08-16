@@ -51,6 +51,12 @@ const DOORS: {
       'Three models graded the same 51 records 65%, 75%, 92%. Capture stays off until that number exists at useful precision.',
   },
   {
+    href: '/trials',
+    label: 'Trials',
+    blurb:
+      'Pointed at Kubernetes, VS Code, CPython, Linux, Rust and Django. Every round found junk; every kind of junk became a filter. Django produced three records.',
+  },
+  {
     href: REPO,
     label: 'GitHub',
     blurb: 'Source, issues, releases. Built in the open, Go, MIT.',

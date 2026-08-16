@@ -81,4 +81,5 @@ export const INDEX: Hit[] = [
   { title: 'Questions', body: 'Sixty-one answers about capture, anchoring, security, privacy, scope and project status', group: 'Pages', href: '/faq' },
   { title: 'Contact', body: 'Report a bug, open an issue, email, LinkedIn, X, Instagram', group: 'Pages', href: '/contact' },
   { title: 'Three LLMs graded the same 51 agent-written code rationales', body: '65% 75% 92% faithfulness capture stays off 2,672 edits 32.8% 33.0% 33.3% structural gate 30 unanimous good 3 unanimous bad 18 disputed read ten myself Claude 5/7 Grok 3/7 Kimi 2/7 seven judged entries', group: 'Pages', href: '/notes' },
+  { title: 'Running whence against code that is not mine', body: 'trials corpus kubernetes vscode cpython linux rust django backfill dry run 310 candidates 823 candidates XXX as TODO generated files thin splits marker ceiling django three records anchoring untested', group: 'Pages', href: '/trials' },
 ]
