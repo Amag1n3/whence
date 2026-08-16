@@ -1237,6 +1237,16 @@ type found struct {
 	src        string // which marker produced it, recorded as the record's source
 }
 
+// expectedOutputExts are the well-known expected-output formats: files a test
+// framework rewrites on every run, like the machine-written .fixed twin Rust's
+// lint tests keep beside each .rs fixture — 22 of the round-two corpus
+// candidates arrived as identical .rs/.fixed pairs (CORPUS-TEST-2026-08-16).
+// A record anchored in one is anchored to something regenerated on every run,
+// which is the generated-file defect wearing an extension nobody would guess.
+// A named list of known formats, grown against real cases only — never by
+// imagining extensions.
+var expectedOutputExts = []string{".fixed", ".stderr", ".stdout", ".snap", ".golden"}
+
 // readSource reads a file if it plausibly holds source. Binary sniffing is a NUL
 // byte in the first 512 bytes — the same heuristic git uses, and wrong only for
 // files nobody writes comments in.
@@ -1262,6 +1272,14 @@ func readSource(p string) []string {
 		return nil
 	}
 	lines := strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
+	// Expected-output fixtures are the same refusal as generated files below:
+	// the test framework rewrites them, so the anchor is rewritten with them.
+	ext := filepath.Ext(p)
+	for _, e := range expectedOutputExts {
+		if ext == e {
+			return nil
+		}
+	}
 	// A generated file's comments are the generator's reasoning, not the
 	// repo's, and regenerating rewrites the anchor under them — 20 of
 	// Kubernetes' 92 candidates were one identical protoc line living in
@@ -1349,7 +1367,12 @@ func harvest(lines []string) []found {
 		// Two independent ways to qualify, so the condition is widened here rather
 		// than inside hasReason: a function called hasReason that returned true
 		// for "MUST" would be a lie in its own name.
-		if text != "" && (!needsReason || hasReason(text) || hasCommitment(text)) {
+		//
+		// The question rule lives here for the same reason. capture.go reads
+		// hasReason as a deliberately-labelled lexical floor on how often stated
+		// reasoning exists; refusing questions inside it would move that number
+		// without the thing it measures having changed.
+		if text != "" && (!needsReason || hasReason(text) || hasCommitment(text)) && !asksQuestion(text) {
 			out = append(out, found{start: i + 1, end: end, text: text, src: src})
 		}
 		i = j
@@ -1421,6 +1444,19 @@ func hasCommitment(s string) bool {
 		}
 	}
 	return false
+}
+
+// asksQuestion reports whether a note's headline is a question. A question is
+// not a decision: Linux's "Is there any reason to assume differently?"
+// qualified only because "reason" is on the admission list, and CPython's "is
+// this test needed?" is the same shape (CORPUS-TEST-2026-08-16, round two).
+//
+// The headline is the same text firstSentence would store as the decision, so
+// a rhetorical question mid-note is fine — "We cannot use the fast path here.
+// Why? The lock is already held." does not END on its question.
+func asksQuestion(text string) bool {
+	d, _ := firstSentence(text)
+	return strings.HasSuffix(strings.TrimSpace(d), "?")
 }
 
 // sourceFor turns a marker into the source string a record carries, so `whence
@@ -1551,6 +1587,15 @@ func endsInAbbreviation(before string) bool {
 // `check` is trying to stop an agent. 6/4 was chosen over a looser 4/3 on
 // purpose — 4/3 still passes "In order to avoid | ..." — so do not loosen them
 // back without a real miss that 6/4 caused and 4/3 would not.
+//
+// Round two of the same test showed the scan and the counter under those
+// thresholds both leaking. "This must be a macro (rather than a function with
+// trait bounds) because ..." cut at "rather than" — INSIDE the brackets — and
+// stored "This must be a macro (" as the decision, which also passed the floor
+// only because strings.Fields scores a bare "(" as a word. So an occurrence of
+// a split word inside an unclosed (, [, { or backtick pair is skipped, and if
+// every occurrence is inside one there is no split at all; and the halves are
+// counted by wordCount, which a punctuation-only token does not fool.
 func splitAtReason(s string) (decision, why string, ok bool) {
 	l := strings.ToLower(s)
 	if len(l) != len(s) {
@@ -1558,8 +1603,21 @@ func splitAtReason(s string) (decision, why string, ok bool) {
 	}
 	at := -1
 	for _, w := range splitWords {
-		if i := strings.Index(l, w); i > 0 && (at < 0 || i < at) {
-			at = i
+		// The earliest occurrence outside any bracket wins for this word — see
+		// above. A word at index 0 opens the note on its reason and is refused,
+		// as before.
+		for i := strings.Index(l, w); i > 0; {
+			if !insideBrackets(l[:i]) {
+				if at < 0 || i < at {
+					at = i
+				}
+				break
+			}
+			n := strings.Index(l[i+1:], w)
+			if n < 0 {
+				break
+			}
+			i += n + 1
 		}
 	}
 	if at < 0 {
@@ -1567,10 +1625,50 @@ func splitAtReason(s string) (decision, why string, ok bool) {
 	}
 	d := strings.TrimRight(strings.TrimSpace(s[:at]), " ,;—-")
 	w := strings.TrimSpace(s[at:])
-	if len(strings.Fields(d)) < 6 || len(strings.Fields(w)) < 4 {
+	if wordCount(d) < 6 || wordCount(w) < 4 {
 		return "", "", false
 	}
 	return d, w, true
+}
+
+// insideBrackets reports whether the end of s sits inside an unclosed (, [, {
+// or backtick pair, counting from the start of the string. Plain byte counting
+// is enough: splitAtReason has already refused non-ASCII, so bytes and offsets
+// agree. A closer at zero depth closes nothing — a stray ")" does not cancel a
+// bracket that opens after it.
+func insideBrackets(s string) bool {
+	depth, ticks := 0, 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			if depth > 0 {
+				depth--
+			}
+		case '`':
+			ticks++
+		}
+	}
+	return depth > 0 || ticks%2 != 0
+}
+
+// wordCount counts the tokens carrying at least one letter or digit.
+// strings.Fields alone scores a bare "(" as a word, which let a five-word
+// decision plus a stray bracket pass the six-word floor — rust/zerocopy's
+// "This must be a macro (" (CORPUS-TEST-2026-08-16, round two). The 6/4
+// thresholds were right; the counter under them was not.
+func wordCount(s string) int {
+	n := 0
+	for _, tok := range strings.Fields(s) {
+		for _, r := range tok {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) {
+				n++
+				break
+			}
+		}
+	}
+	return n
 }
 
 func has(rs []Record, file, decision string) bool {

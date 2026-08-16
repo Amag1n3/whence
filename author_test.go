@@ -172,6 +172,16 @@ func TestHarvestMarkerSet(t *testing.T) {
 		{"xxx with a reason is still a decision", []string{
 			"# XXX: seek() is bypassed because the buffered reader owns the position.",
 			"def f(): pass"}, true, "XXX comment"},
+		// Round two of the corpus test: a question is not a decision, even when
+		// a reason word admits it — "reason" is doing the admitting here.
+		{"xxx as a question is rejected despite the reason word", []string{
+			"# XXX: is there any reason to assume differently?",
+			"def f(): pass"}, false, ""},
+		// But a question after the decision sentence is rhetoric, not a task:
+		// the headline is the first sentence, and it does not end on the "?".
+		{"a decision followed by a question is still a decision", []string{
+			"// HACK: we cannot use the fast path here. Why would the lock be free?",
+			"func f() {}"}, true, "HACK comment"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -265,6 +275,23 @@ func TestBackfillSplitsAOneSentenceNoteAtItsReason(t *testing.T) {
 			"Return true when the flag is set and false otherwise.",
 			"",
 		},
+		// From rust zerocopy/src/macros.rs, corpus round two: "rather than"
+		// sits inside the parenthetical, so it is skipped and the cut lands at
+		// "because" — the decision keeps the whole macro statement instead of
+		// being cut to "This must be a macro (".
+		{
+			"This must be a macro (rather than a function with trait bounds) because there's no way, in a generic context, to enforce that two types have the same size",
+			"This must be a macro (rather than a function with trait bounds)",
+			"because there's no way, in a generic context, to enforce that two types have the same size",
+		},
+		// The round-two word-count fix, proven on its own: "()" carries no
+		// letter, so five real words plus a stray bracket is still under the
+		// floor — strings.Fields alone would have scored it six and split.
+		{
+			"This must be a macro () because there's no way to enforce it",
+			"This must be a macro () because there's no way to enforce it",
+			"",
+		},
 	} {
 		d, w := firstSentence(c.in)
 		if d != c.decision || w != c.why {
@@ -288,6 +315,22 @@ func TestBackfillSkipsGeneratedFiles(t *testing.T) {
 	})
 	if lines := readSource(filepath.Join(dir, "api_grpc.pb.go")); lines != nil {
 		t.Fatalf("a generated file must yield nothing to harvest, got %d lines", len(lines))
+	}
+}
+
+// An expected-output fixture is the same defect as generated Go in an
+// extension nobody would guess: Rust's lint tests keep a machine-written
+// .fixed twin beside each .rs fixture, and 22 round-two corpus candidates
+// arrived as identical pairs. The test framework rewrites the file on every
+// run, so the anchor is rewritten with it.
+func TestBackfillSkipsExpectedOutputFiles(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "lint.fixed", []string{
+		"// NOTE: this should be derived because the compiler says so.",
+		"fn main() {}",
+	})
+	if lines := readSource(filepath.Join(dir, "lint.fixed")); lines != nil {
+		t.Fatalf("an expected-output fixture must yield nothing to harvest, got %d lines", len(lines))
 	}
 }
 
