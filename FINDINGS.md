@@ -173,6 +173,10 @@ fixable — and both other graders independently proposed the same fix, better t
 mine: store only the paragraph that carries the marker **and** names this edit,
 rather than the whole message.
 
+That fix is now in: a captured reason is the one paragraph where both gates land
+on the same prose, and zero or two-or-more qualifying paragraphs write nothing at
+all. Every number above was graded before it, so it re-measures none of them.
+
 ## Caveats, because they bound everything above
 
 - This measures **attribution** — does the record explain this edit — not **truth**.
