@@ -906,7 +906,14 @@ var (
 	// alwaysMarkers are never written about something obvious. The word itself
 	// is the admission that a choice was made against a constraint, so the
 	// comment is a decision by construction.
-	alwaysMarkers = []string{"ponytail:", "HACK:", "WORKAROUND:", "XXX:", "GOTCHA:"}
+	//
+	// That premise is per-project. XXX: sat here until the 2026-08-16 corpus
+	// test (CORPUS-TEST-2026-08-16.md): CPython uses XXX the way other projects
+	// use TODO, and 91 of its 151 candidates were unanswered questions under it
+	// — "is this test needed?", "Should seek() be used", "implement". Do not
+	// move it back: this list is the only path with no gate behind it, and in a
+	// repo that treats XXX as a task marker there is nothing behind it at all.
+	alwaysMarkers = []string{"ponytail:", "HACK:", "WORKAROUND:", "GOTCHA:"}
 
 	// reasonMarkers are the comments that describe code already present. TODO and
 	// FIXME are deliberately excluded: even when they give a reason, that reason
@@ -915,7 +922,11 @@ var (
 	// 14 task-shaped TODOs pass it — so narrowing the marker set is the smaller
 	// honest filter. A missed task is noise avoided; a missing decision is still
 	// recoverable by hand.
-	reasonMarkers = []string{"NOTE:", "WARNING:", "CAVEAT:"}
+	//
+	// XXX: is here rather than in alwaysMarkers because its meaning is
+	// per-project: Kubernetes writes it as a decision, CPython writes it as a
+	// task. The reason gate is what separates the two — see alwaysMarkers.
+	reasonMarkers = []string{"NOTE:", "WARNING:", "CAVEAT:", "XXX:"}
 
 	// reasonWords are what giving a reason sounds like. Deliberately a small,
 	// boring list: every word here is one people write without thinking about it,
@@ -1208,9 +1219,14 @@ var splitWords = []string{
 	"rather than", "instead of",
 }
 
+// ponytail: vendored trees are only caught when they are named vendor/ or
+// third_party/. CPython vendors Expat at Modules/expat/ with no marker of any
+// kind, and 11 of its 151 candidates were upstream's reasoning
+// (CORPUS-TEST-2026-08-16). No heuristic catches that shape; invent one only
+// when a second real case lands.
 var skipDir = map[string]bool{
 	".git": true, storeDirName: true, "node_modules": true,
-	"dist": true, "build": true, "vendor": true, ".next": true,
+	"dist": true, "build": true, "vendor": true, "third_party": true, ".next": true,
 }
 
 // found is one harvested note: the comment block plus the declaration it sits
@@ -1245,7 +1261,40 @@ func readSource(p string) []string {
 	if len(b) == 0 {
 		return nil
 	}
-	return strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
+	lines := strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
+	// A generated file's comments are the generator's reasoning, not the
+	// repo's, and regenerating rewrites the anchor under them — 20 of
+	// Kubernetes' 92 candidates were one identical protoc line living in
+	// *_grpc.pb.go files (CORPUS-TEST-2026-08-16). The standard marker line
+	// is the convention; filename patterns like *.pb.go are not, and miss
+	// every generator that does not use that suffix.
+	if generated(lines) {
+		return nil
+	}
+	return lines
+}
+
+// generated reports whether a file declares itself machine-made with Go's
+// standard marker line, `^// Code generated .* DO NOT EDIT\.$`, expressed as
+// prefix plus suffix rather than a regexp because that is all the pattern is.
+// Only the head is examined: the marker is defined to sit in the comment
+// block before the first non-comment, non-blank line, and the cap keeps a
+// pathological all-comment file from being scanned to its end.
+func generated(lines []string) bool {
+	for i, l := range lines {
+		if i >= 50 {
+			return false
+		}
+		t := strings.TrimSpace(l)
+		if strings.HasPrefix(t, "// Code generated ") && strings.HasSuffix(t, " DO NOT EDIT.") {
+			return true
+		}
+		if t != "" && !strings.HasPrefix(t, "//") && !strings.HasPrefix(t, "/*") &&
+			!strings.HasPrefix(t, "*") && !strings.HasPrefix(t, "#") {
+			return false
+		}
+	}
+	return false
 }
 
 // harvest finds every ponytail note in a file and the span it concerns.
@@ -1491,6 +1540,17 @@ func endsInAbbreviation(before string) bool {
 // would leave no decision. And non-ASCII case folding can change byte length,
 // which moves every offset — so the split is abandoned rather than applied to
 // indices that may no longer mean anything.
+//
+// A third refusal, from the 2026-08-16 corpus test: a cut that leaves either
+// half too thin to mean anything. Real output stored the decision as "In order"
+// (cut at "to avoid", the whole rule pushed into why) and produced a one-word
+// why (cut at "otherwise"). So the split is refused when the decision half is
+// fewer than 6 words or the why half fewer than 4. The thresholds are tuned to
+// the asymmetry, not derived: an unsplit note is a correct record with a longer
+// headline, while a fragment headline is a wrong record printed at the moment
+// `check` is trying to stop an agent. 6/4 was chosen over a looser 4/3 on
+// purpose — 4/3 still passes "In order to avoid | ..." — so do not loosen them
+// back without a real miss that 6/4 caused and 4/3 would not.
 func splitAtReason(s string) (decision, why string, ok bool) {
 	l := strings.ToLower(s)
 	if len(l) != len(s) {
@@ -1507,7 +1567,7 @@ func splitAtReason(s string) (decision, why string, ok bool) {
 	}
 	d := strings.TrimRight(strings.TrimSpace(s[:at]), " ,;—-")
 	w := strings.TrimSpace(s[at:])
-	if d == "" || w == "" {
+	if len(strings.Fields(d)) < 6 || len(strings.Fields(w)) < 4 {
 		return "", "", false
 	}
 	return d, w, true
