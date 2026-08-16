@@ -49,6 +49,7 @@ export default defineConfig({
         docs: fileURLToPath(new URL('./docs.html', import.meta.url)),
         faq: fileURLToPath(new URL('./faq.html', import.meta.url)),
         notes: fileURLToPath(new URL('./notes.html', import.meta.url)),
+        trials: fileURLToPath(new URL('./trials.html', import.meta.url)),
       },
     },
   },
