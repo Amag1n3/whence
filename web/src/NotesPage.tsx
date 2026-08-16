@@ -320,6 +320,12 @@ export default function NotesPage() {
           the same fix, better than mine: store only the paragraph that carries
           the marker <B>and</B> names this edit, rather than the whole message.
         </P>
+        <P>
+          That fix is now in: a captured reason is the one paragraph where both
+          gates land on the same prose, and zero or two-or-more qualifying
+          paragraphs write nothing at all. Every number above was graded before
+          it, so it re-measures none of them.
+        </P>
       </DocSection>
 
       <DocSection id="caveats" n={8} title="Caveats, because they bound everything above">
