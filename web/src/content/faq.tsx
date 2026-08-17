@@ -201,7 +201,11 @@ export const FAQ: Cluster[] = [
             content survived, as a percentage. The measure is weighted by how rare each line
             is in the file, so a block rewritten down to its <C>func</C> line and its
             closing brace scores near zero rather than the 50% an unweighted count would
-            give it. Below 60% survival the record is called orphaned instead.
+            give it. Below 60% survival the record is called orphaned instead — with one
+            allowance for short spans. A record anchored to two lines that loses one of
+            them can never score above 50%, so on a span that short the floor eases to
+            permit a single lost line, rather than calling a comment that is still sitting
+            in the file lost.
           </>
         ),
       },
@@ -260,8 +264,11 @@ export const FAQ: Cluster[] = [
             No, and it is not scheduled. Per-line hashes already survive insertion,
             deletion, reindentation and whole-block moves, which is most real drift. AST
             paths buy the remainder — a block lifted into a different function, a signature
-            rewritten around unchanged statements — for the price of a CGo dependency, and
-            they wait until a real repository produces orphans the hashes cannot explain.
+            rewritten around unchanged statements — for the price of a CGo dependency. They
+            waited on a real repository producing orphans the hashes cannot explain, and in
+            August 2026 a year of rust-lang/rust was measured for exactly that: six records
+            out of 238 were orphans an AST path would have held. Six does not buy the
+            dependency, so this stays unscheduled rather than pending.
           </>
         ),
       },
