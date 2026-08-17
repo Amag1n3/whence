@@ -144,7 +144,7 @@ switch the gate off.
 $ go install github.com/Amag1n3/whence@latest
 ```
 
-Go 1.22+. `@latest` resolves to the newest tag — v0.3.0 at time of writing.
+Go 1.22+. `@latest` resolves to the newest tag — v0.3.1 at time of writing.
 
 Building from source works the same way and is the better option if you intend
 to edit the code:

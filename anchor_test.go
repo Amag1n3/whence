@@ -157,6 +157,58 @@ func TestAnchorOrphansRatherThanGuess(t *testing.T) {
 	}
 }
 
+// The 2026-08-17 survival run's six "ORPHANED with the comment still in the
+// file" cases: harvest anchors the comment plus the declaration that follows
+// it, so its commonest span is two lines — and a two-line record that loses
+// one line scores at most 0.5, under weakFloor's 0.60. The floor is span-aware
+// now (ANCHOR-SURVIVAL-2026-08-17.md, defect 3): a short span may lose one
+// line and still read as altered. weakFloor itself is unchanged, so a wide
+// span at the same score still orphans.
+func TestAnchorShortSpanFloor(t *testing.T) {
+	hack := []string{
+		"// HACK: key on the opaque type because the alias hides it.",
+		"	if let ty::Alias(ty::Opaque, _) = ty {",
+	}
+	r := Record{ID: "two", File: "a.rs", Start: 1, End: 2, Lines: hashSpan(hack)}
+
+	// The declaration is rewritten; the HACK is untouched. Half the span
+	// survives — altered, not lost, and still pointing at the lines it means.
+	rewritten := []string{hack[0], "	if let ty::Alias(ty::Infer, _) = ty {"}
+	a := resolveAnchor(rewritten, r)
+	if a.State != StateWeak {
+		t.Fatalf("a two-line record losing one line is altered, got %q at %.2f", a.State, a.Integrity)
+	}
+	if a.Integrity != 0.5 {
+		t.Errorf("one of two lines surviving scores 0.5, got %.2f", a.Integrity)
+	}
+	if a.Start != 1 || a.End != 2 {
+		t.Errorf("the surviving window is still the recorded one, got %d-%d", a.Start, a.End)
+	}
+
+	// A ten-line record at the same 0.5 must still orphan: the floor only
+	// loosens for spans that can lose at most one line.
+	var wide []string
+	for i := 0; i < 10; i++ {
+		wide = append(wide, "step"+strconv.Itoa(i)+" := compute"+strconv.Itoa(i)+"(ctx)")
+	}
+	wr := Record{ID: "wide", File: "a.go", Start: 1, End: 10, Lines: hashSpan(wide)}
+	half := append([]string{}, wide...)
+	for i := 5; i < 10; i++ {
+		half[i] = "replaced" + strconv.Itoa(i) + " := somethingElse(ctx)"
+	}
+	if a := resolveAnchor(half, wr); a.State != StateOrphaned {
+		t.Errorf("a ten-line span at 0.5 must still orphan, got %q at %.2f", a.State, a.Integrity)
+	}
+
+	// A one-line record is unaffected: (h-1)/h at h=1 is 0, and that must
+	// never be the floor — it either matched exactly above or is gone.
+	one := Record{ID: "one", File: "a.go", Start: 1, End: 1,
+		Lines: hashSpan([]string{"	uniqueCall(ctx)"})}
+	if a := resolveAnchor([]string{"	uniqueCallChanged(ctx)"}, one); a.State != StateOrphaned {
+		t.Errorf("a one-line record whose line is gone must orphan, got %q at %.2f", a.State, a.Integrity)
+	}
+}
+
 // --- rare lines vs boilerplate ------------------------------------------
 
 // The dangerous case. A record's span is nothing but lines that occur all over

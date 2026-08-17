@@ -283,7 +283,28 @@ func resolveAnchor(lines []string, r Record) Anchor {
 			bestSim, bestAt = s, i
 		}
 	}
-	if bestSim >= weakFloor {
+	// The floor is span-aware: a recorded span of h lines may lose at most one
+	// line and still count as altered rather than lost, so the effective floor
+	// is min(weakFloor, (h-1)/h). harvest anchors the comment plus the
+	// declaration that follows it (author.go:1372-1379), which makes two lines
+	// the commonest span the tool produces — and against a flat 0.60 a
+	// two-line record that loses its declaration scores at most 0.5, printing
+	// ORPHANED for a comment still sitting in the file untouched. Six of the
+	// 2026-08-17 run's 40 orphans were exactly this
+	// (ANCHOR-SURVIVAL-2026-08-17.md, defect 3): decay the span exists to
+	// report was landing as total loss. The floor only ever loosens, never
+	// tightens — for h=10, (h-1)/h is 0.9 and weakFloor stands.
+	//
+	// Guarded at h >= 2: (h-1)/h at h=1 is 0, which would read any nonzero
+	// overlap as altered — a one-line record either matched exactly above or
+	// is genuinely gone.
+	floor := weakFloor
+	if h >= 2 {
+		if hf := float64(h-1) / float64(h); hf < floor {
+			floor = hf
+		}
+	}
+	if bestSim >= floor {
 		// Reported as measured. A cap used to sit here, flattening every
 		// altered block to 0.85 — so one argument added to one line of a forty
 		// line span read exactly like a block half rewritten, which is the

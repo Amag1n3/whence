@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -1069,7 +1070,12 @@ func secretShape(text string) bool {
 // admit is the write-time scan (§14 layer 3). First net: this repo's own
 // .env / .env.* / gitignored-config values. Second net: prefix and entropy
 // shapes. The match is never printed — naming it would re-transcribe the secret.
-// Residual, stated honestly: nothing here catches paraphrase.
+// Residual, stated honestly: nothing here catches paraphrase. Nor a secret that
+// travels as an unprefixed path segment of an otherwise plain URL —
+// entropyToken skips those so that a note citing an issue is not refused
+// (ANCHOR-SURVIVAL-2026-08-17.md, defect 1), and a webhook path carries no
+// prefix secretShapes knows. Deliberately not widened for it: that list admits
+// a shape on a real leak, never on an imagined one.
 func admit(root, file string, start int, decision, why string) error {
 	if secretShape(decision) || secretShape(why) || secretEntropy(decision) || secretEntropy(why) {
 		return fmt.Errorf("whence: %s:%d — the text looks like it holds a credential (a key or token shape); refusing to commit it to a shared store. Rephrase without the secret", file, start)
@@ -1217,6 +1223,19 @@ func secretEntropy(text string) bool {
 }
 
 func entropyToken(s string) bool {
+	// A plain http/https URL is a citation, not a credential: 12 of rust's 15
+	// refused notes in the 2026-08-17 survival run were NOTE/HACK comments
+	// citing a GitHub issue — exactly the records worth keeping, dropped on
+	// length and character classes (ANCHOR-SURVIVAL-2026-08-17.md, defect 1).
+	// Only the shape that cannot carry a secret is skipped: userinfo, a query
+	// string or a fragment is how a credential genuinely travels in a URL
+	// (https://user:pass@host, ?api_key=…), so those still fall through to the
+	// class check below (§7).
+	if u, err := url.Parse(s); err == nil &&
+		(u.Scheme == "http" || u.Scheme == "https") &&
+		u.User == nil && u.RawQuery == "" && u.Fragment == "" {
+		return false
+	}
 	if len(s) < 32 {
 		return false
 	}
@@ -1562,12 +1581,59 @@ func firstSentence(s string) (decision, why string) {
 			at = i + 1
 			continue
 		}
-		return s[:i+1], strings.TrimSpace(s[i+2:])
+		d, w := s[:i+1], strings.TrimSpace(s[i+2:])
+		// A why that is a statement of code explains nothing — storing nothing
+		// is better than storing a statement. See codeWhy.
+		if codeWhy(w) {
+			return d, ""
+		}
+		return d, w
 	}
 	if d, w, ok := splitAtReason(s); ok {
+		// Same guard as the sentence split above: commentBody's `*` rule feeds
+		// both branches, so a folded declaration reaches this one too whenever
+		// the note has no sentence break to split at.
+		if codeWhy(w) {
+			return d, ""
+		}
 		return d, w
 	}
 	return s, ""
+}
+
+// codeWhy reports whether a would-be why half is a statement of code rather
+// than reasoning. The declaration a note sits above can join the note text
+// when the line opens with `*` — commentBody reads a bare `*` as a block-
+// comment continuation, so rust's `*self.current_func.borrow_mut() = ...` was
+// folded into the note and the ". " split stored the statement as the why
+// (ANCHOR-SURVIVAL-2026-08-17.md, defect 2, record 1642c7).
+//
+// codeish (main.go) settles it, over identifier-shaped words of 6+ letters: a
+// code statement's long words are all identifiers (current_func, borrow_mut),
+// while a prose why always carries one plain long word codeish refuses
+// (because, called, function). Inherits codeish's blind spot verbatim — a
+// code statement whose long words are plain lowercase keeps its why — which
+// is the direction that loses nothing.
+func codeWhy(s string) bool {
+	long := 0
+	for i := 0; i < len(s); {
+		if !identStart(s[i]) {
+			i++
+			continue
+		}
+		j := i + 1
+		for j < len(s) && identCont(s[j]) {
+			j++
+		}
+		if j-i >= 6 {
+			long++
+			if !codeish(s[i:j]) {
+				return false
+			}
+		}
+		i = j
+	}
+	return long > 0
 }
 
 // abbreviations are the tokens that end in a period without ending a sentence.

@@ -284,12 +284,32 @@ func TestBackfillSplitsAOneSentenceNoteAtItsReason(t *testing.T) {
 			"This must be a macro (rather than a function with trait bounds)",
 			"because there's no way, in a generic context, to enforce that two types have the same size",
 		},
+		// From rust declare.rs, 2026-08-17 survival run defect 2 (record
+		// 1642c7): the declaration line opened with `*`, commentBody read it as
+		// a block-comment continuation, and the ". " split stored the statement
+		// as the why. A why that is code is worth nothing — store nothing.
+		{
+			"it is needed to set the current_func here as well, because get_fn() is not called for the main function. self.current_func.borrow_mut() = Some(func);",
+			"it is needed to set the current_func here as well, because get_fn() is not called for the main function.",
+			"",
+		},
 		// The round-two word-count fix, proven on its own: "()" carries no
 		// letter, so five real words plus a stray bracket is still under the
 		// floor — strings.Fields alone would have scored it six and split.
 		{
 			"This must be a macro () because there's no way to enforce it",
 			"This must be a macro () because there's no way to enforce it",
+			"",
+		},
+		// The same code-as-why refusal on the OTHER branch: a folded
+		// declaration reaches splitAtReason whenever the note has no sentence
+		// break, and commentBody's `*` rule feeds both paths equally. Only
+		// "since", "so that" and "to avoid" get here — "because" and
+		// "otherwise" open the why with a long plain word, which is what tells
+		// codeWhy the half is prose.
+		{
+			"Cache the current function pointer on the builder since self.current_func.borrow_mut() = Some(func) is set",
+			"Cache the current function pointer on the builder",
 			"",
 		},
 	} {
@@ -454,6 +474,37 @@ func TestSecretShapeRefused(t *testing.T) {
 	} {
 		if secretShape(text) {
 			t.Errorf("a legitimate decision must not be refused: %q", text)
+		}
+	}
+}
+
+// A note that cites a tracking issue is a note with a reason — the best
+// records in the corpus — and 12 of rust's 15 refusals in the 2026-08-17
+// survival run were exactly that: a bare issue URL is 32+ chars, mixed
+// classes, not hex, so the entropy net refused it (ANCHOR-SURVIVAL-2026-08-17.md,
+// defect 1). A PLAIN http/https URL is let through; userinfo and query strings
+// are how a credential genuinely travels in a URL, so those must still hit the
+// class check. Asserted against admit, not entropyToken, because the trust
+// boundary is what is under test.
+func TestAdmitLetsACitedIssueURLThrough(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	if err := admit(dir, "main.rs", 31,
+		"use jemalloc as the global allocator because the system malloc fragments, see https://github.com/rust-lang/rust/issues/75100",
+		""); err != nil {
+		t.Errorf("a note citing a tracking issue must be admitted: %v", err)
+	}
+
+	// The spec's example shape, made long enough to reach the class check: the
+	// literal https://user:pass@host is 22 chars and under the 32-char floor,
+	// so only a longer one proves the URL skip did not swallow it.
+	for _, decision := range []string{
+		"deploy against https://admin:hunter2x@internal.example.com because the proxy needs auth",
+		"post to https://internal.example.com/collect?api_key=k9X2mQ7vR4tZ8wB3nY6cL1pF5gH0jS2d because batching",
+	} {
+		if err := admit(dir, "main.rs", 31, decision, ""); err == nil {
+			t.Errorf("a URL carrying userinfo or a query string must still be refused: %q", decision)
 		}
 	}
 }
