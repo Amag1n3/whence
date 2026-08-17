@@ -1,7 +1,9 @@
 package main
 
 import (
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -275,4 +277,127 @@ func TestMatchSinksOrphansBelowLiveAnchors(t *testing.T) {
 	if got[1].Anchor.State != StateOrphaned {
 		t.Errorf("the newer record should have orphaned, got %q", got[1].Anchor.State)
 	}
+}
+
+// --- decay against this repo's history --------------------------------
+
+// resolveAnchor has only ever been tested against synthetic edits written by
+// someone who knew the algorithm. This walks first-parent history and asks
+// what state today's records resolve to in each past snapshot they were alive
+// for. A record is eligible at a commit only when its Date is not later than
+// that commit's date — rows older than the record are pre-history, not decay.
+// File-absent orphans are a missing path; file-present orphans are the miss.
+// Existence is cat-file, not "did show error", so a read failure cannot hide
+// in the absent column.
+//
+// Gated: the suite stays offline and hermetic unless you ask.
+func TestAnchorDecay(t *testing.T) {
+	if os.Getenv("WHENCE_DECAY") != "1" {
+		t.Skip("set WHENCE_DECAY=1 to measure anchor decay against git history")
+	}
+
+	root, err := decayGit("rev-parse", "--show-toplevel")
+	if err != nil {
+		t.Fatalf("not a git repository: %v", err)
+	}
+	root = strings.TrimSpace(root)
+
+	out, err := decayGit("-C", root, "log", "--first-parent", "--format=%H %cd", "--date=short", "HEAD")
+	if err != nil {
+		t.Fatalf("git log: %v", err)
+	}
+	type commit struct{ hash, date string }
+	var commits []commit
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		hash, date, ok := strings.Cut(line, " ")
+		if !ok || hash == "" || date == "" {
+			t.Fatalf("git log line %q: want hash and YYYY-MM-DD", line)
+		}
+		commits = append(commits, commit{hash: hash, date: date})
+	}
+	if len(commits) == 0 {
+		t.Fatal("no first-parent commits")
+	}
+
+	rs, err := Load(filepath.Join(root, storeDirName, recordsFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rs) == 0 {
+		t.Fatal("no records to measure")
+	}
+
+	type snap struct {
+		lines   []string
+		present bool
+	}
+	cache := map[string]snap{}
+	show := func(rev, path string) snap {
+		key := rev + "\x00" + path
+		if s, ok := cache[key]; ok {
+			return s
+		}
+		spec := rev + ":" + path
+		if _, err := decayGit("-C", root, "cat-file", "-e", spec); err != nil {
+			s := snap{present: false}
+			cache[key] = s
+			return s
+		}
+		blob, err := decayGit("-C", root, "show", spec)
+		if err != nil {
+			t.Fatalf("%s exists at %s but could not be read: %v", path, rev, err)
+		}
+		s := snap{present: true}
+		text := strings.TrimSuffix(blob, "\n")
+		if text != "" {
+			s.lines = strings.Split(text, "\n")
+		}
+		cache[key] = s
+		return s
+	}
+
+	t.Logf("%d records × %d first-parent commits", len(rs), len(commits))
+	t.Logf("%4s  %8s  %9s  %5s  %7s  %4s  %13s  %14s",
+		"back", "eligible", "line-only", "exact", "drifted", "weak", "orphan-absent", "orphan-present")
+
+	for back, c := range commits {
+		var eligible, lineOnly, exact, drifted, weak, absent, present int
+		for _, r := range rs {
+			if r.Date > c.date {
+				continue
+			}
+			eligible++
+			s := show(c.hash, r.File)
+			switch resolveAnchor(s.lines, r).State {
+			case StateLineOnly:
+				lineOnly++
+			case StateExact:
+				exact++
+			case StateDrifted:
+				drifted++
+			case StateWeak:
+				weak++
+			case StateOrphaned:
+				if s.present {
+					present++
+				} else {
+					absent++
+				}
+			}
+		}
+		if got := lineOnly + exact + drifted + weak + absent + present; got != eligible {
+			t.Fatalf("back %d: counted %d of %d eligible", back, got, eligible)
+		}
+		t.Logf("%4d  %8d  %9d  %5d  %7d  %4d  %13d  %14d",
+			back, eligible, lineOnly, exact, drifted, weak, absent, present)
+	}
+}
+
+// decayGit is git with stderr discarded, so a missing path at an old revision
+// does not leak `fatal:` lines outside the test log.
+func decayGit(args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
+	cmd.Stderr = io.Discard
+	out, err := cmd.Output()
+	return string(out), err
 }
