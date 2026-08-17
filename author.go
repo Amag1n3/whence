@@ -826,6 +826,16 @@ func backfillCmd(args []string) {
 	}
 
 	added, skipped, shown := 0, 0, 0
+	// The dry run buffers its finds and prints them only after the walk,
+	// grouped by decision text, because the same sentence recurs: round two of
+	// the corpus test found 72 repeated texts in linux and 36 in rust, and
+	// "MUST NOT be called from interrupt context" sits above sixteen separate
+	// drivers — every one of them true, so the data is right and the review
+	// experience of approving one sentence sixteen times is wrong
+	// (CORPUS-TEST-2026-08-16.md, round two). The cost of buffering is that a
+	// dry run prints nothing until the walk ends — about 14 seconds on a
+	// linux clone — which is the accepted trade for a report command.
+	var dry []dryFind
 	err = filepath.WalkDir(abs, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil // an unreadable directory is not a reason to stop
@@ -854,10 +864,11 @@ func backfillCmd(args []string) {
 				}
 			}
 			if !*write {
-				// Dry run: name what was found and where, and nothing more.
-				// The decision text is shown so a human can read it for the
-				// secret this gate exists to catch before it is committed.
-				fmt.Printf("  would add  %s:%d-%d  %s\n", rel, f.start, f.end, decision)
+				// Dry run: hold what was found and where for the report after
+				// the walk. The decision text is shown so a human can read it
+				// for the secret this gate exists to catch before it is
+				// committed.
+				dry = append(dry, dryFind{rel: rel, start: f.start, end: f.end, decision: decision})
 				shown++
 				continue
 			}
@@ -876,10 +887,53 @@ func backfillCmd(args []string) {
 		os.Exit(1)
 	}
 	if !*write {
-		fmt.Printf("\n%d record(s) found, %d already present — nothing written. Rerun with --yes to store them.\n", shown, skipped)
+		lines, distinct := groupDryRuns(dry)
+		for _, l := range lines {
+			fmt.Println(l)
+		}
+		fmt.Printf("\n%d record(s) found (%d distinct texts), %d already present — nothing written. Rerun with --yes to store them.\n", shown, distinct, skipped)
 		return
 	}
 	fmt.Printf("\n%d record(s) added, %d already present\n", added, skipped)
+}
+
+// dryFind is one harvest hit held for the dry-run report: where it was found,
+// and the decision sentence a record would store.
+type dryFind struct {
+	rel        string
+	start, end int
+	decision   string
+}
+
+// groupDryRuns turns the buffered finds into the lines a dry run prints.
+// Finds carrying an identical decision text collapse into one group — the
+// decision once, with a count, then its locations indented beneath it — and a
+// text found once keeps the single-line form it has always printed. Groups,
+// and the locations within one, are in first-encounter order: the order the
+// walk met them. Pure, so the report is testable without walking a
+// filesystem; the count of groups rides along for the closing summary.
+func groupDryRuns(finds []dryFind) (lines []string, distinct int) {
+	var order []string
+	groups := make(map[string][]dryFind)
+	for _, f := range finds {
+		if _, ok := groups[f.decision]; !ok {
+			order = append(order, f.decision)
+		}
+		groups[f.decision] = append(groups[f.decision], f)
+	}
+	for _, d := range order {
+		locs := groups[d]
+		if len(locs) == 1 {
+			f := locs[0]
+			lines = append(lines, fmt.Sprintf("  would add  %s:%d-%d  %s", f.rel, f.start, f.end, d))
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("  would add  ×%d  %s", len(locs), d))
+		for _, f := range locs {
+			lines = append(lines, fmt.Sprintf("      %s:%d-%d", f.rel, f.start, f.end))
+		}
+	}
+	return lines, len(order)
 }
 
 func validateBackfillArgs(args []string) error {
