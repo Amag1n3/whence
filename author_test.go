@@ -370,6 +370,70 @@ func TestBackfillIsIdempotent(t *testing.T) {
 	}
 }
 
+// Round two of the corpus test found 72 repeated texts in linux and 36 in
+// rust — "MUST NOT be called from interrupt context" above sixteen separate
+// drivers, each one true. The dry run groups identical decision texts so a
+// reviewer approves one sentence once; a text found once prints exactly as it
+// always has.
+func TestGroupDryRuns(t *testing.T) {
+	cases := []struct {
+		name         string
+		finds        []dryFind
+		want         []string
+		wantDistinct int
+	}{
+		{"a single text prints exactly as it always has", []dryFind{
+			{rel: "drivers/net/eth.c", start: 40, end: 42, decision: "MUST NOT be called from interrupt context"},
+		}, []string{
+			"  would add  drivers/net/eth.c:40-42  MUST NOT be called from interrupt context",
+		}, 1},
+		{"two locations of one text collapse into a group of two", []dryFind{
+			{rel: "drivers/ata/ahci.c", start: 100, end: 102, decision: "MUST NOT be called from interrupt context"},
+			{rel: "drivers/scsi/sd.c", start: 55, end: 57, decision: "MUST NOT be called from interrupt context"},
+		}, []string{
+			"  would add  ×2  MUST NOT be called from interrupt context",
+			"      drivers/ata/ahci.c:100-102",
+			"      drivers/scsi/sd.c:55-57",
+		}, 1},
+		{"three texts, only the middle one repeats", []dryFind{
+			{rel: "a.go", start: 1, end: 2, decision: "first decision"},
+			{rel: "b.go", start: 3, end: 4, decision: "second decision"},
+			{rel: "c.go", start: 5, end: 6, decision: "second decision"},
+			{rel: "d.go", start: 7, end: 8, decision: "third decision"},
+		}, []string{
+			"  would add  a.go:1-2  first decision",
+			"  would add  ×2  second decision",
+			"      b.go:3-4",
+			"      c.go:5-6",
+			"  would add  d.go:7-8  third decision",
+		}, 3},
+		{"groups keep first-encounter order", []dryFind{
+			{rel: "z.go", start: 1, end: 2, decision: "met first"},
+			{rel: "y.go", start: 3, end: 4, decision: "met second"},
+			{rel: "x.go", start: 5, end: 6, decision: "met first"},
+			{rel: "w.go", start: 7, end: 8, decision: "met second"},
+		}, []string{
+			"  would add  ×2  met first",
+			"      z.go:1-2",
+			"      x.go:5-6",
+			"  would add  ×2  met second",
+			"      y.go:3-4",
+			"      w.go:7-8",
+		}, 2},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, distinct := groupDryRuns(c.finds)
+			if !sameSeq(got, c.want) {
+				t.Errorf("lines:\n got %q\nwant %q", got, c.want)
+			}
+			if distinct != c.wantDistinct {
+				t.Errorf("distinct = %d, want %d", distinct, c.wantDistinct)
+			}
+		})
+	}
+}
+
 // A secret-shaped string in a harvested comment must never reach a committed
 // store. The refusal is in add, so it covers backfill and `whence add` alike.
 func TestSecretShapeRefused(t *testing.T) {
