@@ -81,5 +81,6 @@ export const INDEX: Hit[] = [
   { title: 'Questions', body: 'Sixty-one answers about capture, anchoring, security, privacy, scope and project status', group: 'Pages', href: '/faq' },
   { title: 'Contact', body: 'Report a bug, open an issue, email, LinkedIn, X, Instagram', group: 'Pages', href: '/contact' },
   { title: 'Three LLMs graded the same 51 agent-written code rationales', body: '65% 75% 92% faithfulness capture stays off 2,672 edits 32.8% 33.0% 33.3% structural gate 30 unanimous good 3 unanimous bad 18 disputed read ten myself Claude 5/7 Grok 3/7 Kimi 2/7 seven judged entries', group: 'Pages', href: '/notes' },
-  { title: 'Running whence against code that is not mine', body: 'trials corpus kubernetes vscode cpython linux rust django backfill dry run 310 candidates 823 candidates XXX as TODO generated files thin splits marker ceiling django three records anchoring untested', group: 'Pages', href: '/trials' },
+  { title: '198 of 238 rustc records still resolved after a year', body: 'anchor survival rust-lang/rust microsoft/vscode 173 intact 40 orphaned 25 decision gone 9 rename 6 anchoring miss tree-sitter hashes hold weakFloor C0 HEAD', group: 'Pages', href: '/notes#survival' },
+  { title: 'Running whence against code that is not mine', body: 'trials corpus kubernetes vscode cpython linux rust django backfill dry run 310 candidates 823 candidates XXX as TODO generated files thin splits marker ceiling django three records anchoring measured separately', group: 'Pages', href: '/trials' },
 ]

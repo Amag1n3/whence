@@ -171,12 +171,23 @@ export default function TrialsPage() {
 
       <DocSection id="untested" n={5} title="What none of this has tested">
         <P>
-          Anchoring. Every run so far has exercised the harvester and the
-          sentence splitter, which is the easy half. Whether a record stays
-          attached to the right lines while somebody else's code moves around
-          underneath it — across their rebases, their refactors, their renames —
-          is the question the tool actually lives or dies on, and it needs a
-          different experiment than this one.
+          Anchoring was the gap here, and it is the one thing on this page that
+          has since been closed. Every run above exercised the harvester and the
+          sentence splitter, the easy half; whether a record stays attached
+          while somebody else's code moves underneath it needed a different
+          experiment, and in August 2026 it got one. Records were harvested at a
+          commit a year back in rust-lang/rust and microsoft/vscode, then
+          re-resolved across the history that followed: 198 of 238 still
+          resolved. That run is written up in the notes.
+        </P>
+        <P>
+          What is still untested is narrower, and worth naming rather than
+          leaving implied. That experiment walked notes those repositories had
+          already written, not records a person authored deliberately for their
+          own code. vscode contributed ten of the records, so the result leans
+          on effectively one codebase. And it measured a year already in the
+          past — not a record written today and watched forward from here, which
+          is the shape anyone installing this actually gets.
         </P>
       </DocSection>
     </DocPage>

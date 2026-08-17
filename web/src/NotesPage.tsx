@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react'
 
 import { DocPage, DocSection, P, type DocSectionMeta } from '@/components/DocPage'
+import { Reveal } from '@/components/Reveal'
 import { cn } from '@/lib/utils'
 
-/* The article at FINDINGS.md, rendered as JSX. /notes is the article — not
-   an index, not a post list. A second note is when a generalisation earns
-   its keep. */
+/* Two dated writeups on one page, not an index and not a third HTML
+   entry. FINDINGS.md (2026-08-15) owns the hero; the survival run
+   (ANCHOR-SURVIVAL-2026-08-17.md) follows it. A second note is when a
+   generalisation earns its keep. */
 
 const SECTIONS: DocSectionMeta[] = [
   { id: 'filter', label: 'The filter' },
@@ -17,6 +19,11 @@ const SECTIONS: DocSectionMeta[] = [
   { id: 'absence', label: 'What did not happen' },
   { id: 'caveats', label: 'Caveats' },
   { id: 'conclusion', label: 'The conclusion' },
+  { id: 'survival', label: 'A year of rustc' },
+  { id: 'curve', label: 'The survival curve' },
+  { id: 'orphans', label: 'The forty orphans' },
+  { id: 'treesitter', label: 'Tree-sitter' },
+  { id: 'limits', label: 'What this does not answer' },
 ]
 
 const M = ({ children }: { children: ReactNode }) => (
@@ -394,6 +401,154 @@ export default function NotesPage() {
           whence is Go, zero dependencies, and its records are JSONL committed
           alongside your code. What I would most like to know is whether the
           anchoring survives a codebase that is not mine.
+        </P>
+      </DocSection>
+
+      <div className="border-t border-white/[0.07]" />
+
+      <section id="survival" className="scroll-mt-24">
+        <Reveal>
+          <p className="font-mono text-[11px] tracking-[0.2em] text-dim uppercase">
+            notes · 2026-08-17
+          </p>
+          <h2 className="mt-3 max-w-[19ch] text-[clamp(1.65rem,2.7vw,2.3rem)] leading-[1.15]">
+            198 of 238 rustc records still resolved after a year. 173 of them fully intact
+          </h2>
+          <p className="mt-6 max-w-[54ch] text-[15.5px] leading-[1.7] text-muted-foreground">
+            The last note ended by asking whether the anchoring survives a
+            codebase that is not mine. I harvested the reason-bearing{' '}
+            <M>HACK</M> and <M>NOTE</M> comments rustc and VS Code already
+            had on 2025-08-17, then re-resolved each record the way the
+            lookup path does, across the commits that touched those files,
+            up to 2026-08-17. Nothing in the resolver was changed. The
+            number describes this binary.
+          </p>
+        </Reveal>
+      </section>
+
+      <DocSection id="curve" n={1} title="The survival curve">
+        <Table
+          cols={['repo', 'when', 'exact', 'drifted', 'altered', 'orphaned']}
+          rows={[
+            ['microsoft/vscode', 'C0', '10', '0', '0', '0'],
+            ['microsoft/vscode', 'HEAD', '7', '3', '0', '0'],
+            ['rust-lang/rust', 'C0', '238', '0', '0', '0'],
+            ['rust-lang/rust', 'HEAD', '34', '139', '25', '40'],
+          ]}
+        />
+        <P>
+          The run recorded the middle two states as drifted and weak. Weak is
+          the altered state on this site: the block is still in the file, and
+          enough of it has been rewritten that the match is no longer exact.
+        </P>
+        <P>
+          vscode: every record survived. Three moved and stayed
+          byte-identical. There is nothing to learn from a column of ten that
+          a column of one would not have shown; it is in the table so the
+          method is visible, not because it bears any weight.
+        </P>
+        <P>
+          rust, still resolved at HEAD — not orphaned:{' '}
+          <B>198 / 238</B>. Intact, meaning exact or drifted:{' '}
+          <B>173 / 238</B>. Altered: 25. Orphaned: 40.
+        </P>
+        <P>
+          Harvest was at C0, a year earlier than the trial that produced 67
+          vscode candidates and 303 rust ones against HEAD. Survival is only
+          defined for records that already existed at C0, so 10 and 238 are
+          not a contradiction of those earlier counts.
+        </P>
+      </DocSection>
+
+      <DocSection id="orphans" n={2} title="The forty orphans">
+        <P>
+          File-level events are not hash failures. A block that moved to
+          another file stays comparable — the line hashes are unsalted — but
+          following it is unbuilt, and <M>check</M> already treats a rename as
+          a removal.
+        </P>
+        <Table
+          cols={['what happened', 'rust', 'whose miss']}
+          rows={[
+            ['the decision itself is gone', '25', 'nobody\'s — correct'],
+            ['recorded lines still in the tree, under another path', '9', 'unbuilt — follow a rename'],
+            ['comment still in the same function; the hashes dropped it', '6', 'anchoring'],
+          ]}
+        />
+        <P>
+          Of the 40 rust orphans, <B>25 are the decision itself being gone</B>{' '}
+          — the comment deleted from a living file, the file deleted, or the
+          claim rewritten into a different one. That is the correct
+          behaviour. <B>9 need following a record across a rename</B>: five
+          clean renames, and four moves into a sibling file while the
+          original path stayed behind as a stub. That is listed as unbuilt
+          roadmap. <B>6 are anchoring&rsquo;s own miss.</B>
+        </P>
+        <P>
+          Anchoring&rsquo;s real miss rate is <B>6 of 238</B>, and one of
+          those six is a pure line-rewrap: the <M>NOTE</M> is still there, the
+          line that followed it is still there, and per-line hashes treat a
+          different line break as different content.
+        </P>
+      </DocSection>
+
+      <DocSection id="treesitter" n={3} title="Tree-sitter, and the deferral it does not reopen">
+        <P>
+          Would an AST path have held each hash-relevant orphan? From the
+          actual diff, not in general.
+        </P>
+        <P>
+          No, for every deleted comment. An AST path to a deleted node is an
+          orphan too. Tree-sitter does not resurrect a comment rustc deleted.
+        </P>
+        <P>
+          No, for a comment that moved to another file. Tree-sitter is
+          per-file. The original file still parses; the recorded lines are
+          not in it. Following those is the rename item, not an AST item.
+        </P>
+        <P>
+          Yes, for the six — in the narrow sense that the <M>HACK</M> or{' '}
+          <M>NOTE</M> is still in the same function, and an AST path to that
+          function would still resolve. What killed the hash is the rest of
+          the recorded span. Harvest anchors the comment plus the next
+          non-comment line, so a two-line record of <M>HACK:</M> plus{' '}
+          <M>if let</M> orphans when the <M>if let</M> is rewritten, even
+          though the <M>HACK</M> is untouched. The rewrap is the purest
+          hash-only miss.
+        </P>
+        <P>
+          Six cases in a year of rustc, none in vscode, where an AST path
+          would have held a comment the hashes dropped. That does not
+          justify a CGo dependency. <B>The hashes hold.</B> The standing
+          deferral — wait until a real repository produces orphans the
+          hashes cannot explain — is closed, not reopened.
+        </P>
+      </DocSection>
+
+      <DocSection id="limits" n={4} title="What this does not answer">
+        <ul className="max-w-[56ch] list-disc space-y-3 pl-5 text-[14.5px] leading-[1.68] text-muted-foreground">
+          <li>
+            Effectively <B>one repo</B>. vscode&rsquo;s n is 10 and
+            decorative; every record there survived, and a sample that small
+            cannot show otherwise.
+          </li>
+          <li>
+            <B>One grader.</B> I classified the orphans against HEAD. Nobody
+            independently re-graded them.
+          </li>
+          <li>
+            The clones were deleted after the run. The per-case
+            classification cannot be re-checked without a re-run.
+          </li>
+          <li>
+            These are notes rustc wrote before whence existed, harvested
+            from comments, not records a human authored deliberately.
+          </li>
+        </ul>
+        <P>
+          It also does not answer survival of records harvested today and
+          walked forward from today. This is C0-to-HEAD on a year of
+          already-written notes.
         </P>
       </DocSection>
     </DocPage>
