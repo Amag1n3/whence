@@ -267,6 +267,29 @@ func runHookPre(t *testing.T, payload string) string {
 	return string(b)
 }
 
+func TestVersionLine(t *testing.T) {
+	for _, c := range []struct {
+		version string
+		dirty   bool
+		want    string
+	}{
+		// A tagged `go install` build: the module version and nothing else.
+		{"v0.3.1", false, "whence v0.3.1"},
+		// `go build` after v0.3.1 stamps a pseudo-version, which already
+		// carries the revision — so no second copy of it here.
+		{"v0.3.2-0.20260817184129-5d8953281fb3", false, "whence v0.3.2-0.20260817184129-5d8953281fb3"},
+		// Go stamps its own +dirty from the same setting the flag comes from.
+		// Trimmed, so the state is spelled out once rather than twice.
+		{"v0.3.2-0.20260817184129-5d8953281fb3+dirty", true, "whence v0.3.2-0.20260817184129-5d8953281fb3 (uncommitted changes)"},
+		// Built in a way that carries no build info at all.
+		{"", false, "whence — build information not available"},
+	} {
+		if got := versionLine(c.version, c.dirty); got != c.want {
+			t.Errorf("versionLine(%q, %v) = %q, want %q", c.version, c.dirty, got, c.want)
+		}
+	}
+}
+
 func hookContext(t *testing.T, raw string) string {
 	t.Helper()
 	var out hookOut

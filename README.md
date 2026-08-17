@@ -144,7 +144,10 @@ switch the gate off.
 $ go install github.com/Amag1n3/whence@latest
 ```
 
-Go 1.22+. `@latest` resolves to the newest tag — v0.3.1 at time of writing.
+Go 1.22+. `@latest` resolves to the newest tag — v0.4.0 at time of writing.
+`whence --version` says what you actually have, which is not always what you
+think: it reads the version Go stamps at build time, so a stale `go install`
+reports the tag it came from rather than the newest one.
 
 Building from source works the same way and is the better option if you intend
 to edit the code:

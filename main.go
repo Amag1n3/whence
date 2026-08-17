@@ -17,6 +17,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -79,6 +80,8 @@ func main() {
 		captureCmd(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
+	case "-v", "--version", "version":
+		fmt.Println(versionLine(buildInfo()))
 	default:
 		query(os.Args[1])
 	}
@@ -114,6 +117,7 @@ func usage() {
                            beside what was said before it. Writes nothing:
                            whether a stated reason is the real one is the open
                            question, so a human reads these and decides.
+  whence --version          print what this binary was built from
   whence hook pre           (called by Claude Code; reads a hook payload on stdin)
   whence hook post          (called by Claude Code after an edit) record the
                            reason the agent stated for it, anchored to the span
@@ -125,6 +129,48 @@ zsh and ksh have a "whence" builtin that shadows this one. Add
   alias whence='command whence'
 to your shell rc, or make your own symlink under another name.
 `)
+}
+
+// buildInfo reads the version this binary was built from, and whether the tree
+// was dirty when it was built.
+//
+// There is deliberately no version constant. `go install` stamps the module
+// version and `go build` stamps a pseudo-version plus the revision, both of
+// which debug.ReadBuildInfo hands back — and a hand-maintained const would be a
+// second source of truth that goes stale the first release somebody forgets it.
+// Until this existed, `whence --version` fell through to query() and answered
+// "no records for --version", which is the same confident wrong answer main()
+// already fixed once for `backfill --help`.
+func buildInfo() (version string, dirty bool) {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "", false
+	}
+	for _, s := range info.Settings {
+		if s.Key == "vcs.modified" {
+			dirty = s.Value == "true"
+		}
+	}
+	return info.Main.Version, dirty
+}
+
+// versionLine formats what buildInfo found. The revision is not printed beside
+// the version: `go build` already encodes it in the pseudo-version it stamps
+// (v0.3.2-0.<time>-<rev> for a commit after v0.3.1), so printing both says the
+// same thing twice.
+//
+// Go stamps its own "+dirty" onto that pseudo-version from the same vcs.modified
+// setting buildInfo reads, so the suffix is trimmed and the state is spelled out
+// once from the flag. Printing both read "…+dirty (uncommitted changes)".
+func versionLine(version string, dirty bool) string {
+	if version == "" {
+		return "whence — build information not available"
+	}
+	out := "whence " + strings.TrimSuffix(version, "+dirty")
+	if dirty {
+		out += " (uncommitted changes)"
+	}
+	return out
 }
 
 // --- the hook -----------------------------------------------------------

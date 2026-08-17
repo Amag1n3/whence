@@ -16,5 +16,4 @@ HANDOFF.md
 # local editor and agent config — one machine's setup, not the tool's
 .cursor/
 opencode.json
-.DS_Store
 .mcp.json
