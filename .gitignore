@@ -17,3 +17,7 @@ HANDOFF.md
 .cursor/
 opencode.json
 .DS_Store
+.commandcode
+.mcp.json
+TASK-BACKFILL-FILTERS.md
+TASK-BACKFILL-FILTERS-2.md
