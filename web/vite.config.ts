@@ -50,6 +50,7 @@ export default defineConfig({
         faq: fileURLToPath(new URL('./faq.html', import.meta.url)),
         notes: fileURLToPath(new URL('./notes.html', import.meta.url)),
         trials: fileURLToPath(new URL('./trials.html', import.meta.url)),
+        privacy: fileURLToPath(new URL('./privacy.html', import.meta.url)),
       },
     },
   },

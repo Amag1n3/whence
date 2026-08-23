@@ -27,7 +27,35 @@
     <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Static summary for agents and no-JS readers: an H1 plus real prose in
+         the raw HTML, so crawlers that never run the bundle still see what
+         whence is. createRoot().render() replaces it on mount, so visitors
+         get the designed page; the flash is milliseconds of dark text on a
+         dark page. -->
+    <div id="root">
+      <main
+        style="max-width:44rem;margin:0 auto;padding:8rem 1.5rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace"
+      >
+        <h1 style="font-size:2rem;line-height:1.2">
+          whence — remember why your code is the way it is
+        </h1>
+        <p style="line-height:1.7;color:#B5B5B5">
+          whence is a zero-dependency Go CLI that captures the reasoning coding
+          agents produce and discards, anchors it to the code it concerns, and
+          replays that reasoning before the code changes again. Git remembers
+          what changed; whence remembers why. When an agent like Claude Code,
+          Codex, or Cursor is about to edit a file, the whence hook surfaces
+          the decisions, rejected alternatives, and constraints recorded for
+          that code — the context that never made it into a commit message —
+          so settled decisions stop being re-litigated. The read path is
+          deterministic and offline: no network calls, no model calls, and
+          whence never judges code quality. Records live in .whence/ inside
+          your repository and travel with it. Install with
+          go install github.com/Amag1n3/whence@latest, then read the docs at
+          /docs, the FAQ at /faq, and the agent guidance at /llms.txt.
+        </p>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

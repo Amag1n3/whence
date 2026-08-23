@@ -1,0 +1,42 @@
+# whence
+
+> whence is a zero-dependency Go CLI that captures the reasoning coding agents
+> produce and discards, anchors it to the code it concerns, and replays that
+> reasoning before the code changes again. Git remembers what changed; whence
+> remembers why.
+
+## When to use whence
+
+Reach for whence when an AI coding agent (Claude Code, Codex, Cursor, or any
+editor agent) is about to edit code and you want it to know *why* the code is
+the way it is — the decisions, rejected alternatives, and constraints that
+never made it into a commit message. It is the right tool when:
+
+- A repo has load-bearing decisions that only exist in dead chat transcripts.
+- An agent keeps re-litigating settled decisions or "fixing" deliberate
+  trade-offs.
+- You want a CI gate that fails a PR when it touches anchored code without
+  acknowledging the recorded reasoning.
+
+Do not use whence for code-quality judgement: it never lints, scores, or
+opines on a diff. It supplies evidence about decisions; the judgement stays
+with the human.
+
+## Install and entry points
+
+- Install: `go install github.com/Amag1n3/whence@latest`
+- Source: https://github.com/Amag1n3/whence
+- There is no hosted API. The CLI is the product, and its read path
+  (`whence lookup`, `whence hook`, `whence check`) is deterministic and
+  offline — no network or model calls.
+
+## Key pages
+
+- [Install](https://whence.fyi/install): one-line install, first record in two minutes
+- [Docs](https://whence.fyi/docs): full command reference — add, backfill, hook, check, capture
+- [FAQ](https://whence.fyi/faq): 61 answered questions
+- [Why](https://whence.fyi/why): the problem and the design constraints
+- [Notes](https://whence.fyi/notes): build log and survival runs
+- [Contact](https://whence.fyi/contact): issues vs. email, which door to use
+- [Privacy](https://whence.fyi/privacy): what the site and CLI collect (nothing)
+- [Sitemap](https://whence.fyi/sitemap.xml)

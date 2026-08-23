@@ -24,10 +24,11 @@ const NAV: { href: string; label: string; key: PageKey }[] = [
   { href: '/faq', label: 'questions', key: 'faq' },
 ]
 
-/* 'contact' is a PageKey but deliberately not a NAV entry. The header is at
-   five items plus the logo already and wraps to two rows on a narrow phone;
-   contact is a destination people look for in a footer, not something to
-   spend header width on. It is rendered explicitly by Footer below. */
+/* 'contact' and 'privacy' are PageKeys but deliberately not NAV entries. The
+   header is at five items plus the logo already and wraps to two rows on a
+   narrow phone; both are destinations people look for in a footer, not
+   something to spend header width on. They are rendered explicitly by Footer
+   below. */
 export type PageKey =
   | 'why'
   | 'notes'
@@ -36,6 +37,7 @@ export type PageKey =
   | 'docs'
   | 'faq'
   | 'contact'
+  | 'privacy'
 
 export function Header({
   onLogo,
@@ -131,6 +133,12 @@ export function Footer() {
           className="inline-flex min-h-6 items-center transition-colors hover:text-silt"
         >
           contact
+        </a>
+        <a
+          href="/privacy"
+          className="inline-flex min-h-6 items-center transition-colors hover:text-silt"
+        >
+          privacy
         </a>
         <span className="sm:ml-auto">started 2026-07-31</span>
       </div>
