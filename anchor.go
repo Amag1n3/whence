@@ -188,11 +188,20 @@ func fileLines(path string) []string {
 // fileLinesWithin is fileLines plus the repo root the path must stay inside.
 // Records are written root-relative (Rel), so a stored path that resolves
 // outside root was crafted, not authored.
+//
+// The path is symlink-resolved before reading, so a symlink inside the repo
+// pointing out cannot turn a record into a one-bit hash oracle on a file the
+// record never concerned (the guard outsideRoot already resolves, so resolving
+// here too keeps the two reads consistent — see record.go's outsideRoot).
 func fileLinesWithin(path, root string) []string {
 	if outsideRoot(path, root) {
 		return nil
 	}
-	b, err := os.ReadFile(path)
+	resolved := path
+	if r, err := filepath.EvalSymlinks(path); err == nil {
+		resolved = r
+	}
+	b, err := os.ReadFile(resolved)
 	if err != nil {
 		return nil
 	}

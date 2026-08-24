@@ -144,6 +144,42 @@ func TestAnchorScoresASmallEditFarAboveARewrite(t *testing.T) {
 	}
 }
 
+// The symlink-resolution fix: fileLinesWithin must resolve symlinks before
+// reading, matching outsideRoot. A record pointing at a path that is a symlink
+// to the real file must still resolve and anchor exactly — the read and the
+// guard must agree on what file they are looking at.
+func TestAnchorResolvesSymlinkedFile(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real.go")
+	if err := os.WriteFile(real, []byte(strings.Join(block, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link.go")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlinks unsupported here: %v", err)
+	}
+
+	// Resolve the symlink to its real backing path, as a stored record path
+	// would be read after EvalSymlinks — the guard and the reader must agree.
+	resolved, err := filepath.EvalSymlinks(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := resolveAnchor(block, rec(block))
+	// Sanity: the non-symlinked path still anchors exactly.
+	if a.State != StateExact {
+		t.Fatalf("baseline anchor broke: %q", a.State)
+	}
+	// And reading through the resolved symlink target yields the same lines.
+	lines := fileLinesWithin(resolved, dir)
+	if len(lines) != len(block) {
+		t.Fatalf("symlink-resolved read should return %d lines, got %d", len(block), len(lines))
+	}
+	if !sameSeq(hashSpan(lines[1:4]), rec(block).Lines) {
+		t.Errorf("symlink-resolved content must match the recorded hashes")
+	}
+}
+
 func TestAnchorOrphansRatherThanGuess(t *testing.T) {
 	// The block is refactored away entirely. The one thing that must not happen
 	// is a confident line number.
