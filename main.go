@@ -118,7 +118,7 @@ func usage() {
                            whether a stated reason is the real one is the open
                            question, so a human reads these and decides.
   whence --version          print what this binary was built from
-  whence hook pre           (called by Claude Code; reads a hook payload on stdin)
+  whence hook pre           (PreToolUse: Claude Code file_path, or Codex apply_patch)
   whence hook post          (called by Claude Code after an edit) record the
                            reason the agent stated for it, anchored to the span
                            it just wrote. Marked UNCHECKED until you confirm it.
@@ -187,6 +187,7 @@ type hookIn struct {
 		NewString  string `json:"new_string"`  // Edit
 		Content    string `json:"content"`     // Write — the whole file
 		ReplaceAll bool   `json:"replace_all"` // Edit
+		Command    string `json:"command"`     // Codex apply_patch patch text
 	} `json:"tool_input"`
 }
 
@@ -195,6 +196,33 @@ type hookOut struct {
 		HookEventName     string `json:"hookEventName"`
 		AdditionalContext string `json:"additionalContext"`
 	} `json:"hookSpecificOutput"`
+}
+
+// patchPaths pulls file paths out of an apply_patch command.
+// Headers observed in Codex docs / V4A: "*** Update File: ", "*** Add File: ".
+// Delete-only hunks are ignored — there is no file left to look up.
+func patchPaths(cmd string) []string {
+	var out []string
+	for _, line := range strings.Split(cmd, "\n") {
+		path := ""
+		switch {
+		case strings.HasPrefix(line, "*** Update File: "):
+			path = strings.TrimSpace(strings.TrimPrefix(line, "*** Update File: "))
+		case strings.HasPrefix(line, "*** Add File: "):
+			path = strings.TrimSpace(strings.TrimPrefix(line, "*** Add File: "))
+		}
+		if path != "" {
+			out = append(out, path)
+		}
+	}
+	return out
+}
+
+func hookFiles(in hookIn) []string {
+	if in.ToolInput.FilePath != "" {
+		return []string{in.ToolInput.FilePath}
+	}
+	return patchPaths(in.ToolInput.Command)
 }
 
 // hookPre runs before an agent edits a file and injects any recorded decisions
@@ -213,51 +241,73 @@ func hookPre() {
 	if err := json.Unmarshal(raw, &in); err != nil {
 		return
 	}
-	if in.ToolInput.FilePath == "" {
+	files := hookFiles(in)
+	if len(files) == 0 {
 		return // not a file-touching tool; nothing to say
 	}
 
-	// Hooks report absolute paths, but resolve defensively against the session
-	// cwd in case that ever changes.
-	abs := in.ToolInput.FilePath
-	if !filepath.IsAbs(abs) {
-		abs = filepath.Join(in.Cwd, abs)
+	type fire struct {
+		root, abs string
+		on, off   []Resolved
 	}
+	var fires []fire
+	var parts []string
+	for _, p := range files {
+		// Hooks report absolute paths, but resolve defensively against the
+		// session cwd in case that ever changes. Codex apply_patch often
+		// sends a repo-relative path.
+		abs := p
+		if !filepath.IsAbs(abs) {
+			abs = filepath.Join(in.Cwd, abs)
+		}
 
-	// Resolve the store from the FILE, not the session. See FindStore.
-	store, root, ok := FindStore(abs)
-	if !ok {
-		return
-	}
-	rs, err := Load(store)
-	if err != nil || len(rs) == 0 {
-		return
-	}
-	hits := Match(root, rs, Rel(root, abs), 0)
-	if len(hits) == 0 {
-		return
-	}
+		// Resolve the store from the FILE, not the session. See FindStore.
+		store, root, ok := FindStore(abs)
+		if !ok {
+			continue
+		}
+		rs, err := Load(store)
+		if err != nil || len(rs) == 0 {
+			continue
+		}
+		hits := Match(root, rs, Rel(root, abs), 0)
+		if len(hits) == 0 {
+			continue
+		}
 
-	on, off := gate(hits, in, abs, root)
-	showTail := len(off) > 0 && !tailAlreadyShown(root, in.SessionID, abs)
-	if len(on) == 0 && !showTail {
+		on, off := gate(hits, in, abs, root)
+		showTail := len(off) > 0 && !tailAlreadyShown(root, in.SessionID, abs)
+		if len(on) == 0 && !showTail {
+			continue
+		}
+
+		ctx := renderContext(on)
+		rel := filepath.ToSlash(Rel(root, abs))
+		if showTail {
+			ctx += formatTail(off, rel)
+		}
+		if len(files) > 1 {
+			ctx = rel + "\n" + ctx
+		}
+		parts = append(parts, ctx)
+		if !showTail {
+			off = nil
+		}
+		fires = append(fires, fire{root: root, abs: abs, on: on, off: off})
+	}
+	if len(parts) == 0 {
 		return
 	}
 
 	var out hookOut
 	out.HookSpecificOutput.HookEventName = "PreToolUse"
-	ctx := renderContext(on)
-	if showTail {
-		ctx += formatTail(off, filepath.ToSlash(Rel(root, abs)))
-	}
-	out.HookSpecificOutput.AdditionalContext = ctx
+	out.HookSpecificOutput.AdditionalContext = strings.Join(parts, "\n")
 	if err := json.NewEncoder(os.Stdout).Encode(out); err != nil {
 		return
 	}
-	if !showTail {
-		off = nil
+	for _, f := range fires {
+		appendSurfaced(f.root, f.abs, in.SessionID, f.on, f.off)
 	}
-	appendSurfaced(root, abs, in.SessionID, on, off)
 }
 
 // gate splits hits into on-target and off-target. When the payload does not

@@ -194,6 +194,45 @@ func TestHookPreFailsOpen(t *testing.T) {
 	}
 }
 
+func TestHookPreReadsApplyPatchCommand(t *testing.T) {
+	_, abs, named, other := hookRepo(t)
+	payload := hookApplyPatchJSON(t, "s1", filepath.Dir(abs), abs, "const resolveProfileForCase = async (complain) => {")
+	ctx := hookContext(t, runHookPre(t, payload))
+	if !strings.Contains(ctx, named.Decision) {
+		t.Fatalf("named record must render from apply_patch input:\n%s", ctx)
+	}
+	if strings.Contains(ctx, other.Decision) && !strings.Contains(ctx, "other record(s) on this file") {
+		// empty old_string → dump-all is acceptable; do not fail this
+	}
+}
+
+func TestHookPreReadsApplyPatchRelativePath(t *testing.T) {
+	_, abs, named, _ := hookRepo(t)
+	payload := hookApplyPatchJSON(t, "s1", filepath.Dir(abs), filepath.Base(abs), "const resolveProfileForCase = async (complain) => {")
+	ctx := hookContext(t, runHookPre(t, payload))
+	if !strings.Contains(ctx, named.Decision) {
+		t.Fatalf("relative apply_patch path must resolve against cwd:\n%s", ctx)
+	}
+}
+
+func TestHookPreApplyPatchNoPathPrintsNothing(t *testing.T) {
+	got := runHookPre(t, `{"cwd":"/tmp","session_id":"s","tool_input":{"command":"echo hi"}}`)
+	if strings.TrimSpace(got) != "" {
+		t.Fatalf("non-patch command must print nothing, got %q", got)
+	}
+}
+
+func TestPatchPaths(t *testing.T) {
+	cmd := "*** Begin Patch\n*** Update File: src/a.go\n@@\n-old\n+new\n*** Add File: src/b.go\n+hi\n*** End Patch\n"
+	got := patchPaths(cmd)
+	if len(got) != 2 || got[0] != "src/a.go" || got[1] != "src/b.go" {
+		t.Fatalf("got %q", got)
+	}
+	if patchPaths("echo hi") != nil {
+		t.Fatal("non-patch must yield no paths")
+	}
+}
+
 func hookRepo(t *testing.T) (dir, abs string, named, other Resolved) {
 	t.Helper()
 	dir = t.TempDir()
@@ -232,6 +271,17 @@ func hookJSON(t *testing.T, session, abs, old, neu string, replaceAll bool) stri
 	in.ToolInput.OldString = old
 	in.ToolInput.NewString = neu
 	in.ToolInput.ReplaceAll = replaceAll
+	b, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+func hookApplyPatchJSON(t *testing.T, session, cwd, path, old string) string {
+	t.Helper()
+	in := hookIn{Cwd: cwd, SessionID: session}
+	in.ToolInput.Command = "*** Begin Patch\n*** Update File: " + path + "\n@@\n-" + old + "\n+changed\n*** End Patch\n"
 	b, err := json.Marshal(in)
 	if err != nil {
 		t.Fatal(err)

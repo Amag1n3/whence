@@ -1,0 +1,19 @@
+{
+  "description": "Surfaces recorded decisions before Codex edits a file.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$(git rev-parse --show-toplevel)/hooks/whence-hook.sh\"",
+            "timeout": 5,
+            "statusMessage": "Checking recorded decisions...",
+            "additionalContextLimit": 5000
+          }
+        ]
+      }
+    ]
+  }
+}
