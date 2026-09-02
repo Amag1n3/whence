@@ -141,6 +141,23 @@ export function Footer() {
           privacy
         </a>
         <span className="sm:ml-auto">started 2026-07-31</span>
+        <a
+          href="https://codehype.ai/product/whence-f4vi?utm_source=codehype_badge"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center opacity-60 transition-opacity hover:opacity-100"
+          aria-label="Find us on CodeHype"
+        >
+          <img
+            src="https://codehype.ai/badges/whence-f4vi.svg?variant=find-us&v=11"
+            alt="Find us on CodeHype"
+            width="380"
+            height="100"
+            loading="lazy"
+            decoding="async"
+            className="h-auto w-[120px]"
+          />
+        </a>
       </div>
     </footer>
   )
