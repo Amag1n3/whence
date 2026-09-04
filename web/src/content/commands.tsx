@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 /* The command surface, taken from `usage()` in main.go. Same standing rule as
    Terminal and DriftDemo: this is a transcription of what the binary does, so
    it becomes a lie the moment main.go changes without it. Eleven commands as
-   of v0.4.0 — if `whence --help` lists one that is not here, here is wrong.
+   of v0.5.0 — if `whence --help` lists one that is not here, here is wrong.
    `--version` is absent for the same reason `--help` is: meta flags are not part
    of the command surface this page documents.
 

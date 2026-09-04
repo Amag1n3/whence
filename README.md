@@ -106,6 +106,9 @@ $ whence check --base origin/main
 
 That exit code is the product. Everything else is plumbing that leads to it.
 
+A walkthrough that produces it on purpose, from a curated record (not capture):
+[`bash example/demo.sh`](example/).
+
 **`check` reports coverage, never verdicts.** It says *these lines are governed by
 these decisions, go and confirm* — it does not decide that your change is wrong.
 Judging a diff is code review, that category is well served, and a tool that
@@ -144,10 +147,11 @@ switch the gate off.
 $ go install github.com/Amag1n3/whence@latest
 ```
 
-Go 1.22+. `@latest` resolves to the newest tag — v0.4.0 at time of writing.
-`whence --version` says what you actually have, which is not always what you
-think: it reads the version Go stamps at build time, so a stale `go install`
-reports the tag it came from rather than the newest one.
+Go 1.22+. `@latest` resolves to the newest **Git tag**, not `main`. A commit on
+main is invisible to `@latest` until it is tagged. `whence --version` says what
+you actually have, which is not always what you think: it reads the version Go
+stamps at build time, so a stale `go install` reports the tag it came from
+rather than the newest one.
 
 Building from source works the same way and is the better option if you intend
 to edit the code:

@@ -161,7 +161,7 @@ Real, and future work must use these rather than inventing better ones:
 - **The repository gates itself** in CI, and its store holds 10 records, all
   human-authored.
 - Site live at whence.fyi; `go install github.com/Amag1n3/whence@latest` verified
-  from a clean machine; latest release tag `v0.3.0`.
+  from a clean machine. `@latest` follows the newest Git tag, not `main`.
 
 **Absences future work must not fabricate:** there are no users other than the
 author, no testimonials, no adoption numbers, no benchmarks against competing
