@@ -56,9 +56,9 @@ export default function InstallPage() {
       <DocSection id="binary" n={1} title="Install the binary">
         <Code>{`go install github.com/Amag1n3/whence@latest`}</Code>
         <P>
-          Go 1.22+. <M>@latest</M> resolves to the newest tag. This step cannot be
-          skipped and no plugin can do it for you — the plugin carries hook
-          configuration, not a compiled binary.
+          Go 1.22+. <M>@latest</M> resolves to the newest Git tag, not{' '}
+          <M>main</M>. This step cannot be skipped and no plugin can do it for you —
+          the plugin carries hook configuration, not a compiled binary.
         </P>
         <P>
           Building from source works the same way, and is the better option if you

@@ -24,7 +24,7 @@ with the human.
 
 ## Install and entry points
 
-- Install: `go install github.com/Amag1n3/whence@latest`
+- Install: `go install github.com/Amag1n3/whence@latest` (`@latest` is the newest Git tag, not `main`)
 - Source: https://github.com/Amag1n3/whence
 - There is no hosted API. The CLI is the product, and its read path
   (`whence lookup`, `whence hook`, `whence check`) is deterministic and

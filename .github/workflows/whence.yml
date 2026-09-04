@@ -17,6 +17,8 @@ jobs:
         name: gofmt (fails if anything is unformatted)
       - run: go vet ./...
       - run: go test ./...
+      - run: bash example/demo.sh
+        name: example demo (lookup, orphan, check exits 1)
 
   site:
     # Two things the site can get wrong silently, both of which it already had.
