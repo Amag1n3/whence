@@ -45,6 +45,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -246,10 +247,18 @@ func readTrail(path string) ([]moment, error) {
 		dec        = json.NewDecoder(f)
 		writes     = map[string]bool{"Edit": true, "Write": true, "NotebookEdit": true}
 	)
+	st, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
 	for {
 		var e transcriptEntry
 		if err := dec.Decode(&e); err != nil {
-			break // a truncated final line is normal for a live session
+			if err := trailStop(err, dec.InputOffset(), st.Size()); err != nil {
+				return nil, fmt.Errorf("%s: %w", path, err)
+			}
+			return ms, nil
 		}
 		if e.IsMeta || len(e.Message.Content) == 0 {
 			continue
@@ -301,7 +310,23 @@ func readTrail(path string) ([]moment, error) {
 			}
 		}
 	}
-	return ms, nil
+}
+
+// trailStop classifies a json.Decoder error from a session transcript.
+//
+// A live session's last line is routinely unfinished; that is not an error.
+// A malformed entry with more of the file after it is: stopping there used
+// to drop every later edit and print a short list as if the session had
+// ended, which is the silent-halfway failure the comment on readTrail names.
+func trailStop(err error, consumed, size int64) error {
+	if err == io.EOF || errors.Is(err, io.ErrUnexpectedEOF) {
+		return nil
+	}
+	var se *json.SyntaxError
+	if errors.As(err, &se) && consumed >= size {
+		return nil
+	}
+	return fmt.Errorf("malformed transcript: %w", err)
 }
 
 // toolResultText pulls the text out of a tool_result block. The content is

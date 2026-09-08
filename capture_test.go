@@ -63,6 +63,36 @@ func TestReadTrailPairsAnEditWithWhatWasSaidBeforeIt(t *testing.T) {
 	}
 }
 
+// A live session ends on a half-written last line. That is not an error, and
+// the edits already read have to come back. A hole in the middle is: the old
+// loop treated every decode error as EOF, so a corrupt line dropped every
+// later edit and capture reported a short session as complete.
+func TestReadTrailDistinguishesTruncationFromAHole(t *testing.T) {
+	dir := t.TempDir()
+	edit := `{"type":"assistant","timestamp":"2026-08-02T10:00:02Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"a.go","new_string":"package a"}}]}}` + "\n"
+
+	trunc := filepath.Join(dir, "live.jsonl")
+	if err := os.WriteFile(trunc, []byte(edit+`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"still writ`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ms, err := readTrail(trunc)
+	if err != nil {
+		t.Fatalf("a truncated last line is a live session, not an error: %v", err)
+	}
+	if len(ms) != 1 {
+		t.Fatalf("edits before the unfinished line must still be returned, got %d", len(ms))
+	}
+
+	hole := filepath.Join(dir, "hole.jsonl")
+	later := `{"type":"assistant","timestamp":"2026-08-02T10:00:03Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"b.go","new_string":"package b"}}]}}` + "\n"
+	if err := os.WriteFile(hole, []byte(edit+"this is not json\n"+later), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readTrail(hole); err == nil {
+		t.Fatal("a malformed line with more session after it must be an error, not a silent short list")
+	}
+}
+
 func TestCaptureRequiresAnExplicitSession(t *testing.T) {
 	for _, args := range [][]string{nil, {}, {"one.jsonl", "two.jsonl"}} {
 		if _, err := capturePath(args); err == nil {

@@ -310,6 +310,23 @@ func TestPriorIDsReadsLineDelimitedStore(t *testing.T) {
 	}
 }
 
+func TestWorkingRecordsRefusesACorruptStore(t *testing.T) {
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "absent.jsonl")
+	rs, err := workingRecords(missing)
+	if err != nil || len(rs) != 0 {
+		t.Fatalf("a missing store is empty, not an error; got %d (%v)", len(rs), err)
+	}
+
+	bad := filepath.Join(dir, "bad.jsonl")
+	if err := os.WriteFile(bad, []byte("{\"id\":\"a1\"}\nnot json\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workingRecords(bad); err == nil {
+		t.Fatal("a corrupt working-tree store must fail check, not look like an empty pass")
+	}
+}
+
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)

@@ -105,8 +105,12 @@ func checkCmd(args []string) {
 		if !ok {
 			continue
 		}
-		rs, err := Load(store)
-		if err != nil || len(rs) == 0 {
+		rs, err := workingRecords(store)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "whence:", err)
+			os.Exit(2)
+		}
+		if len(rs) == 0 {
 			continue
 		}
 		rel := Rel(storeRoot, abs)
@@ -150,6 +154,22 @@ func checkCmd(args []string) {
 	fmt.Printf(".\nwhence does not judge the change — it reports what became of the record.\n" +
 		"Re-point each with `whence reanchor`, or retract it deliberately.\n")
 	os.Exit(1)
+}
+
+// workingRecords loads the working tree's store for check.
+//
+// A missing file is empty (Load already treats that as no records). A
+// corrupt file is an error: collapsing that into "no records cover this
+// diff" is a confident zero, the same failure parseStore already refuses.
+// The hook still fail-opens on an unreadable store — it must not block an
+// edit — but check is the CI gate, and a gate that cannot read the store
+// must not report a clean pass.
+func workingRecords(store string) ([]Record, error) {
+	rs, err := Load(store)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read %s: %w", store, err)
+	}
+	return rs, nil
 }
 
 // blocking reports whether a finding is worth an exit code: something happened
