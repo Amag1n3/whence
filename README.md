@@ -28,6 +28,8 @@
 > intended behaviour, not shipped behaviour.
 >
 > Started 2026-07-31.
+>
+> Listener canary: 2026-09-08.
 
 ---
 
