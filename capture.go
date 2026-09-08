@@ -96,9 +96,9 @@ func captureCmd(args []string) {
 		os.Exit(2)
 	}
 
-	all, err := readTrail(path)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "whence:", err)
+	all, trailErr := readTrail(path)
+	if trailErr != nil && len(all) == 0 {
+		fmt.Fprintln(os.Stderr, "whence:", trailErr)
 		os.Exit(1)
 	}
 	ms, elsewhere := hereOnly(all)
@@ -107,6 +107,10 @@ func captureCmd(args []string) {
 	if len(ms) == 0 {
 		fmt.Println("\nno edits in this session")
 		reportElsewhere(elsewhere)
+		if trailErr != nil {
+			fmt.Fprintln(os.Stderr, "whence:", trailErr)
+			os.Exit(1)
+		}
 		return
 	}
 
@@ -167,6 +171,10 @@ func captureCmd(args []string) {
 		len(ms), located, reasoned, len(ms)-reasoned, surprised)
 	reportElsewhere(elsewhere)
 	fmt.Println("nothing was written; capture proposes, it does not record")
+	if trailErr != nil {
+		fmt.Fprintln(os.Stderr, "whence:", trailErr)
+		os.Exit(1)
+	}
 }
 
 func capturePath(args []string) (string, error) {
@@ -256,7 +264,7 @@ func readTrail(path string) ([]moment, error) {
 		var e transcriptEntry
 		if err := dec.Decode(&e); err != nil {
 			if err := trailStop(err, dec.InputOffset(), st.Size()); err != nil {
-				return nil, fmt.Errorf("%s: %w", path, err)
+				return ms, fmt.Errorf("%s: %w", path, err)
 			}
 			return ms, nil
 		}

@@ -88,8 +88,12 @@ func TestReadTrailDistinguishesTruncationFromAHole(t *testing.T) {
 	if err := os.WriteFile(hole, []byte(edit+"this is not json\n"+later), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readTrail(hole); err == nil {
+	ms, err = readTrail(hole)
+	if err == nil {
 		t.Fatal("a malformed line with more session after it must be an error, not a silent short list")
+	}
+	if len(ms) != 1 || ms[0].File != "a.go" {
+		t.Fatalf("edits before the hole must still be returned, got %d", len(ms))
 	}
 }
 
